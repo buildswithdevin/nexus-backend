@@ -1,0 +1,11 @@
+[build]
+# Install Python deps then install Playwright's Chromium binary (used as
+# a JS-heavy-site fallback scraper; the app runs fine without it).
+buildCommand = "pip install -r requirements.txt && playwright install chromium --with-deps || true"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
