@@ -9,83 +9,161 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 CATEGORIES = [
+    # Technical
     "AI & ML", "Cybersecurity", "Robotics", "Embedded Systems",
-    "Productivity", "Development", "Design", "Research",
-    "Data Science", "Cloud & DevOps", "Hardware", "Other",
+    "Development", "Design", "Data Science", "Cloud & DevOps", "Hardware",
+    # Knowledge / productivity
+    "Research", "Productivity", "Education",
+    # General content
+    "News & Media", "Food & Cooking", "Health & Wellness",
+    "Science", "Business & Finance", "Entertainment", "Other",
 ]
+
+_TECH_CATEGORIES = frozenset({
+    "AI & ML", "Cybersecurity", "Robotics", "Embedded Systems",
+    "Development", "Design", "Data Science", "Cloud & DevOps", "Hardware",
+})
+
+# Tags that are only plausible if the content is genuinely technical
+_TECH_ONLY_TAGS = frozenset({
+    "ai", "llm", "machine-learning", "deep-learning", "neural-network",
+    "python", "javascript", "typescript", "react", "nodejs", "api",
+    "docker", "kubernetes", "devops", "cloud", "aws", "azure",
+    "robotics", "embedded", "firmware", "arduino", "esp32",
+    "security", "cybersecurity", "hacking", "pentest",
+    "database", "sql", "backend", "frontend", "developer-tools",
+})
 
 # ── Local fallback analysis ────────────────────────────────────────────────────
 
+# Non-tech domain patterns checked FIRST to prevent false tech assignments
 _DOMAIN_CATEGORY: list[tuple[set[str], str]] = [
-    ({"github.com", "gitlab.com", "bitbucket.org"}, "Development"),
+    # Food & Cooking
+    ({"allrecipes", "foodnetwork", "epicurious", "seriouseats", "bonappetit",
+      "tasty.co", "delish.", "yummly", "simplyrecipes", "thekitchn", "skinnytaste",
+      "food.", "recipe", "cooking.", "cuisine", "baking", "bbq.", "eater.com"}, "Food & Cooking"),
+    # News & Media
+    ({"cnn.com", "bbc.", "reuters.", "nytimes", "washingtonpost", "theguardian",
+      "apnews", "npr.org", "bloomberg.", "foxnews", "nbcnews", "abc7", "cbsnews",
+      "usatoday", "theatlantic", "politico", "axios"}, "News & Media"),
+    # Health & Wellness
+    ({"webmd", "healthline", "mayoclinic", "nih.gov", "pubmed", "medicalnewstoday",
+      "everydayhealth", "health.", "wellness", "nutrition.", "drugs.com"}, "Health & Wellness"),
+    # Entertainment
+    ({"imdb.com", "rottentomatoes", "metacritic", "netflix", "hulu", "disney",
+      "spotify.com", "soundcloud", "twitch.tv", "youtube.com", "vimeo"}, "Entertainment"),
+    # Business & Finance
+    ({"forbes", "investopedia", "marketwatch", "cnbc.com", "businessinsider",
+      "hbr.org", "wsj.com", "ft.com", "economist"}, "Business & Finance"),
+    # Sports
+    ({"espn.com", "bleacherreport", "nba.com", "nfl.com", "mlb.com",
+      "goal.com", "skysports", "theathletic"}, "Entertainment"),
+    # Science (non-CS)
+    ({"nature.com", "science.org", "sciencedaily", "newscientist", "scientificamerican",
+      "nasa.gov", "space.com", "phys.org"}, "Science"),
+    # Tech domains (after non-tech to avoid misclassifying food.github.io etc.)
+    ({"github.com", "gitlab.com", "bitbucket.org", "codeberg.org"}, "Development"),
     ({"stackoverflow.com", "stackexchange.com"}, "Development"),
-    ({"docs.", "documentation.", "devdocs.io", "developer."}, "Development"),
+    ({"devdocs.io", "developer.mozilla", "developer.apple", "developer.android"}, "Development"),
     ({"arxiv.org", "scholar.google", "semanticscholar.org", "researchgate.net"}, "Research"),
-    ({"youtube.com", "youtu.be", "vimeo.com", "twitch.tv"}, "Design"),
     ({"figma.com", "dribbble.com", "behance.net", "sketch.com"}, "Design"),
     ({"kaggle.com", "huggingface.co", "openai.com", "anthropic.com"}, "AI & ML"),
-    ({"coursera.org", "udemy.com", "edx.org", "khanacademy.org", "pluralsight.com"}, "Research"),
+    ({"coursera.org", "udemy.com", "edx.org", "khanacademy.org", "pluralsight.com"}, "Education"),
     ({"notion.so", "obsidian.md", "roamresearch.com", "logseq.com"}, "Productivity"),
     ({"aws.amazon.com", "cloud.google.com", "azure.microsoft.com", "digitalocean.com"}, "Cloud & DevOps"),
-    ({"arduino.cc", "esp32", "raspberrypi.org", "adafruit.com"}, "Hardware"),
-    ({"ros.org", "robotics.", "robot.", "rover."}, "Robotics"),
+    ({"arduino.cc", "raspberrypi.org", "adafruit.com", "sparkfun.com"}, "Hardware"),
+    ({"ros.org", "robotics."}, "Robotics"),
 ]
 
+# Tags with their trigger keywords — multi-word and long keywords use substring
+# matching; short (≤3 char) single words use word-boundary matching via _kw_match
 _KEYWORD_TAGS: list[tuple[list[str], str]] = [
     (["python", "pytorch", "pandas", "numpy", "flask", "django", "fastapi"], "python"),
-    (["javascript", "js", "node.js", "nodejs", "express", "npm", "deno"], "javascript"),
-    (["typescript", "ts"], "typescript"),
-    (["react", "reactjs", "next.js", "nextjs", "gatsby", "remix"], "react"),
-    (["tailwind", "tailwindcss"], "tailwind"),
-    (["css", "stylesheet", "scss", "sass", "styled-components"], "css"),
-    (["html", "html5", "dom"], "html"),
-    (["machine learning", "ml", "deep learning", "neural network", "bert", "transformers"], "machine-learning"),
-    (["llm", "large language model", "gpt", "chatgpt", "openai", "claude", "anthropic", "gemini"], "llm"),
-    (["ai", "artificial intelligence", "generative ai"], "ai"),
-    (["robot", "robotics", "ros", "autonomy", "drone"], "robotics"),
-    (["arduino", "esp32", "raspberry pi", "microcontroller", "firmware", "embedded"], "embedded"),
-    (["linux", "ubuntu", "debian", "fedora", "bash", "shell", "unix", "terminal"], "linux"),
-    (["docker", "kubernetes", "k8s", "container", "devops", "ci/cd", "github actions"], "devops"),
-    (["database", "sql", "postgresql", "mysql", "mongodb", "redis", "sqlite", "nosql"], "database"),
-    (["api", "rest", "graphql", "grpc", "webhook", "openapi", "swagger"], "api"),
-    (["resume", "cv", "portfolio", "job", "interview", "career", "hiring"], "career"),
-    (["design", "figma", "sketch", "ui", "ux", "user interface", "prototyping"], "design"),
-    (["tutorial", "how to", "guide", "learn", "introduction to", "getting started"], "tutorial"),
-    (["course", "lecture", "lesson", "bootcamp", "training", "certification"], "learning"),
-    (["productivity", "workflow", "automation", "zapier", "make.com", "notion"], "productivity"),
-    (["video", "youtube", "stream", "podcast", "mp4"], "video"),
-    (["security", "cybersecurity", "vulnerability", "pentest", "hacking", "ctf"], "security"),
-    (["data science", "data analysis", "visualization", "jupyter", "pandas", "matplotlib"], "data-science"),
-    (["cloud", "aws", "azure", "gcp", "serverless", "lambda", "vercel", "netlify"], "cloud"),
-    (["hardware", "pcb", "circuit", "electronics", "raspberry", "sensor"], "hardware"),
-    (["writing", "blog", "article", "essay", "newsletter", "substack"], "writing"),
-    (["research", "paper", "study", "survey", "journal", "arxiv"], "research"),
-    (["game", "unity", "unreal", "gamedev", "godot", "pygame"], "game-dev"),
-    (["mobile", "ios", "android", "swift", "kotlin", "react native", "flutter"], "mobile"),
+    (["javascript", "node.js", "nodejs", "express.js", "deno.js"], "javascript"),
+    (["typescript"], "typescript"),
+    (["react", "reactjs", "next.js", "nextjs", "gatsby", "remix.run"], "react"),
+    (["tailwindcss", "tailwind css"], "tailwind"),
+    (["machine learning", "deep learning", "neural network", "bert", "transformers model"], "machine-learning"),
+    (["large language model", "gpt-4", "gpt-3", "chatgpt", "openai api", "claude api", "gemini api", "llama model"], "llm"),
+    (["artificial intelligence", "generative ai", "ai agent", "ai model"], "ai"),
+    (["robotics", "robot arm", "autonomous robot", "ros framework"], "robotics"),
+    (["arduino", "esp32", "raspberry pi", "microcontroller", "firmware", "fpga"], "embedded"),
+    (["linux", "ubuntu", "debian", "fedora", "bash script", "shell script"], "linux"),
+    (["docker", "kubernetes", "k8s", "devops", "ci/cd", "github actions", "gitlab ci"], "devops"),
+    (["postgresql", "mysql", "mongodb", "redis", "sqlite", "nosql", "database"], "database"),
+    (["rest api", "graphql", "grpc", "openapi", "swagger", "webhook"], "api"),
+    (["resume", "portfolio", "job interview", "career", "hiring"], "career"),
+    (["figma", "sketch app", "user interface design", "prototyping", "wireframe"], "design"),
+    (["tutorial", "step-by-step", "how-to guide", "getting started guide"], "tutorial"),
+    (["online course", "lecture", "bootcamp", "certification"], "learning"),
+    (["workflow automation", "zapier", "make.com"], "productivity"),
+    (["cybersecurity", "penetration testing", "pentest", "vulnerability", "exploit", "ctf", "firewall"], "security"),
+    (["data science", "data analysis", "jupyter notebook", "matplotlib", "seaborn"], "data-science"),
+    (["aws", "azure cloud", "google cloud", "serverless", "lambda function", "vercel", "netlify"], "cloud"),
+    (["pcb design", "circuit board", "electronics project", "oscilloscope", "soldering"], "hardware"),
+    (["research paper", "academic study", "journal article", "arxiv", "peer review"], "research"),
+    (["game development", "unity engine", "unreal engine", "godot engine", "pygame"], "game-dev"),
+    (["ios app", "android app", "swift", "kotlin", "react native", "flutter"], "mobile"),
+    # Non-tech tags
+    (["recipe", "ingredients", "cooking", "baking", "cuisine"], "recipe"),
+    (["health tips", "symptoms", "treatment", "wellness", "nutrition"], "health"),
+    (["news", "breaking news", "journalist", "headline", "editorial"], "news"),
 ]
 
 _KEYWORD_CATEGORY: list[tuple[list[str], str]] = [
-    (["machine learning", "deep learning", "llm", "gpt", "transformer", "neural", "ai model", "artificial intelligence", "generative", "openai", "anthropic", "hugging face"], "AI & ML"),
-    (["robot", "robotics", "ros", "autonomous", "servo", "motor driver", "manipulator"], "Robotics"),
-    (["arduino", "esp32", "microcontroller", "raspberry pi", "embedded", "firmware", "fpga", "circuit board", "pcb"], "Embedded Systems"),
-    (["design", "figma", "ui", "ux", "user experience", "prototype", "wireframe", "dribbble", "typography", "color palette"], "Design"),
-    (["security", "cybersecurity", "hacking", "pentest", "vulnerability", "exploit", "ctf", "firewall"], "Cybersecurity"),
-    (["data science", "data analysis", "pandas", "matplotlib", "kaggle", "spark", "tableau", "bi dashboard"], "Data Science"),
-    (["aws", "azure", "gcp", "kubernetes", "docker", "devops", "ci/cd", "terraform", "cloud infrastructure"], "Cloud & DevOps"),
-    (["hardware", "electronics", "pcb", "soldering", "sensor", "power supply", "oscilloscope"], "Hardware"),
-    (["research", "paper", "arxiv", "journal", "academic", "study", "scholarly"], "Research"),
-    (["productivity", "workflow", "notion", "obsidian", "task management", "automation", "time tracking"], "Productivity"),
-    (["python", "javascript", "typescript", "react", "api", "framework", "library", "developer", "programming", "coding", "software", "backend", "frontend"], "Development"),
+    # Non-tech categories checked first
+    (["recipe", "ingredients", "tablespoon", "teaspoon", "cooking time", "serves", "prep time",
+      "bake at", "roast", "simmer", "sauté", "chopped", "minced"], "Food & Cooking"),
+    (["symptoms", "treatment", "diagnosis", "medication", "therapy", "disease", "patient",
+      "clinical trial", "vaccine", "health tips", "nutrition facts"], "Health & Wellness"),
+    (["breaking news", "journalist", "editorial board", "press release", "correspondent",
+      "news report", "latest news", "top stories"], "News & Media"),
+    (["species", "ecosystem", "climate change", "biology", "chemistry", "physics experiment",
+      "quantum", "genomics", "neuroscience", "telescope", "nasa"], "Science"),
+    (["quarterly earnings", "stock market", "investor", "startup funding", "venture capital",
+      "business strategy", "revenue", "ceo", "acquisition"], "Business & Finance"),
+    # Tech categories
+    (["machine learning", "deep learning", "large language model", "gpt-4", "transformer model",
+      "neural network", "ai agent", "generative ai", "openai", "anthropic", "hugging face"], "AI & ML"),
+    (["robotics", "robot arm", "autonomous vehicle", "servo motor", "ros framework", "manipulator"], "Robotics"),
+    (["arduino", "esp32", "microcontroller", "raspberry pi", "embedded system", "firmware", "fpga",
+      "circuit board", "pcb design"], "Embedded Systems"),
+    (["figma design", "ui design", "ux research", "user experience design", "dribbble",
+      "typography", "color palette", "wireframe", "prototype"], "Design"),
+    (["penetration testing", "cybersecurity", "hacking", "vulnerability assessment", "exploit",
+      "ctf challenge", "firewall", "malware"], "Cybersecurity"),
+    (["data science", "data analysis", "machine learning pipeline", "kaggle", "spark",
+      "tableau", "power bi", "data visualization"], "Data Science"),
+    (["aws", "azure", "google cloud", "kubernetes", "docker", "devops", "terraform",
+      "cloud infrastructure", "serverless"], "Cloud & DevOps"),
+    (["electronics", "pcb", "soldering", "oscilloscope", "power supply", "sensor module"], "Hardware"),
+    (["research paper", "academic", "arxiv", "journal", "scholarly", "peer-reviewed"], "Research"),
+    (["workflow", "notion", "obsidian", "task management", "time tracking", "productivity system"], "Productivity"),
+    (["python", "javascript", "typescript", "react", "framework", "library", "developer docs",
+      "programming", "coding", "software engineer", "backend", "frontend"], "Development"),
 ]
+
+
+def _kw_match(keyword: str, text: str) -> bool:
+    """Match a keyword against text with word-boundary safety for short terms."""
+    if ' ' in keyword:
+        # Multi-word phrase: substring is already specific enough
+        return keyword in text
+    if len(keyword) <= 4:
+        # Short tokens: require word boundary to prevent "ts" matching "nutrients"
+        return bool(re.search(r'(?<![a-z0-9])' + re.escape(keyword) + r'(?![a-z0-9])', text))
+    return keyword in text
 
 
 def _local_analyze_site(url: str, title: str, description: str = "", raw_content: str = "") -> dict:
     """Rule-based analysis — always produces a useful result without an API key."""
     from urllib.parse import urlparse
-    import re
 
     domain = urlparse(url).netloc.lower().replace("www.", "")
-    combined = f"{title} {description} {url} {raw_content[:2000]}".lower()
+
+    # Keyword matching uses only title + description + short content excerpt.
+    # URL is deliberately excluded — path segments like /api/v2/... cause false positives.
+    keyword_text = f"{title} {description} {raw_content[:500]}".lower()
 
     # ── Category inference ────────────────────────────────
     category = "Other"
@@ -95,19 +173,24 @@ def _local_analyze_site(url: str, title: str, description: str = "", raw_content
             break
     if category == "Other":
         for keywords, cat in _KEYWORD_CATEGORY:
-            if any(kw in combined for kw in keywords):
+            if any(_kw_match(kw, keyword_text) for kw in keywords):
                 category = cat
                 break
 
     # ── Tag extraction ────────────────────────────────────
     found_tags: list[str] = []
     for keywords, tag in _KEYWORD_TAGS:
-        if any(kw in combined for kw in keywords):
+        if any(_kw_match(kw, keyword_text) for kw in keywords):
             found_tags.append(tag)
-        if len(found_tags) >= 7:
+        if len(found_tags) >= 5:
             break
-    # Always have at least one tag based on category
-    if not found_tags:
+
+    # Strip tech-only tags when category is clearly non-technical
+    if category not in _TECH_CATEGORIES:
+        found_tags = [t for t in found_tags if t not in _TECH_ONLY_TAGS]
+
+    # Only add a fallback category tag when we genuinely know the category
+    if not found_tags and category not in ("Other",):
         cat_tag_map = {
             "Development": "developer-tools",
             "AI & ML": "ai",
@@ -120,22 +203,26 @@ def _local_analyze_site(url: str, title: str, description: str = "", raw_content
             "Data Science": "data-science",
             "Cloud & DevOps": "devops",
             "Hardware": "hardware",
+            "Food & Cooking": "recipe",
+            "Health & Wellness": "health",
+            "News & Media": "news",
+            "Education": "education",
+            "Science": "science",
+            "Business & Finance": "business",
         }
-        found_tags = [cat_tag_map.get(category, "resource")]
+        tag = cat_tag_map.get(category)
+        if tag:
+            found_tags = [tag]
 
     # ── Summary ───────────────────────────────────────────
     if description and len(description) > 40:
         summary = description
     elif raw_content:
-        # Take first meaningful sentence from content
         sentences = re.split(r'(?<=[.!?])\s+', raw_content[:600].strip())
         usable = [s.strip() for s in sentences if len(s.strip()) > 30]
-        if usable:
-            summary = " ".join(usable[:2])
-        else:
-            summary = f"{title} — a resource in the {category} space. No description available yet. Click retry to re-analyze this source."
+        summary = " ".join(usable[:2]) if usable else f"{title} — saved to your NEXUS library."
     else:
-        summary = f"{title} — a {category.lower()} resource. No description available yet. Click retry to re-analyze this source."
+        summary = f"{title} — saved to your NEXUS library."
 
     # ── Use case ──────────────────────────────────────────
     use_case_map = {
@@ -150,18 +237,24 @@ def _local_analyze_site(url: str, title: str, description: str = "", raw_content
         "Data Science": "When analyzing data, building models, or exploring datasets.",
         "Cloud & DevOps": "When deploying, scaling, or automating cloud infrastructure.",
         "Hardware": "When designing circuits, selecting components, or building physical devices.",
+        "Food & Cooking": "When looking for recipes, cooking techniques, or food inspiration.",
+        "Health & Wellness": "When researching health topics, symptoms, treatments, or wellness advice.",
+        "News & Media": "When staying current on news, events, or media coverage.",
+        "Science": "When exploring scientific research, discoveries, or explanations.",
+        "Business & Finance": "When researching business strategy, markets, or financial topics.",
+        "Education": "When learning or teaching a subject in depth.",
+        "Entertainment": "For leisure, entertainment, or cultural reference.",
     }
-    use_case = use_case_map.get(category, "A useful reference for future research and exploration.")
+    use_case = use_case_map.get(category, "A reference saved to your NEXUS library.")
 
     return {
         "summary": summary[:500],
         "category": category,
-        "tags": found_tags[:7],
+        "tags": found_tags[:5],
         "technologies": [],
-        "topics": [category],
+        "topics": [category] if category != "Other" else [],
         "use_case": use_case,
         "learning_value": "intermediate",
-        "relationships": [],
     }
 
 _client: Optional[anthropic.AsyncAnthropic] = None
@@ -186,8 +279,20 @@ def _parse_json(text: str) -> dict:
     return {}
 
 
+def _sanitize_analysis(result: dict) -> dict:
+    """Post-process AI or local output: strip tech-only tags from non-tech categories."""
+    cat = result.get("category", "Other")
+    if cat not in _TECH_CATEGORIES:
+        tags = result.get("tags") or []
+        result["tags"] = [t for t in tags if t not in _TECH_ONLY_TAGS]
+    # Cap at 5 tags
+    result["tags"] = (result.get("tags") or [])[:5]
+    return result
+
+
 async def analyze_site(url: str, title: str, description: str = "", raw_content: str = "") -> dict:
     content_preview = raw_content[:3000] if raw_content else ""
+    categories_str = ', '.join(CATEGORIES)
     prompt = f"""You are an expert knowledge curator. Analyze this website and return structured metadata.
 
 URL: {url}
@@ -197,15 +302,23 @@ PAGE CONTENT (excerpt): {content_preview}
 
 Return ONLY a valid JSON object with these exact fields — no markdown, no explanation:
 {{
-  "summary": "2-3 sentence summary: what the site does, who uses it, and why it matters",
-  "category": "exactly one of: {', '.join(CATEGORIES)}",
-  "tags": ["5-8 specific lowercase tags"],
-  "technologies": ["programming languages, frameworks, tools mentioned or implied"],
-  "topics": ["domain topics this site covers"],
+  "summary": "2-3 sentence summary of what this content is actually about",
+  "category": "exactly one of: {categories_str}",
+  "tags": ["2-5 specific lowercase tags that DIRECTLY describe this content"],
+  "technologies": ["only if this is a technical page: programming languages, frameworks, or tools explicitly mentioned"],
+  "topics": ["domain topics this content actually covers"],
   "use_case": "one sentence: specific situation when someone would visit this",
   "learning_value": "beginner or intermediate or advanced",
-  "relationships": ["3-5 related concepts or fields this connects to"]
-}}"""
+  "relationships": ["2-4 related concepts or fields this actually connects to"]
+}}
+
+CRITICAL RULES — violations make the output useless:
+- Tags must DIRECTLY match the content. Fewer accurate tags beat many wrong ones.
+- NEVER assign tech categories (AI & ML, Development, Robotics, etc.) to food, news, health, or entertainment content.
+- If this is a food/recipe site: category = "Food & Cooking", tags like ["recipe", "cooking"] — NOT "api", "typescript", "llm".
+- If this is a news site: category = "News & Media".
+- If genuinely unclear, use "Other" with no tags rather than inventing ones.
+- technologies = [] unless this page is explicitly about code or technical tools."""
 
     try:
         message = await _get_client().messages.create(
@@ -224,14 +337,15 @@ Return ONLY a valid JSON object with these exact fields — no markdown, no expl
         result.setdefault("summary", description or "No summary available.")
         result.setdefault("use_case", "")
         result.setdefault("learning_value", "intermediate")
+        result = _sanitize_analysis(result)
         logger.info(f"AI analysis complete for: {url}")
         return result
     except anthropic.AuthenticationError:
         logger.warning("Anthropic API key invalid — using local fallback analysis")
-        return _local_analyze_site(url, title, description, raw_content)
+        return _sanitize_analysis(_local_analyze_site(url, title, description, raw_content))
     except Exception as e:
         logger.error(f"AI analysis failed for {url}: {e} — using local fallback")
-        return _local_analyze_site(url, title, description, raw_content)
+        return _sanitize_analysis(_local_analyze_site(url, title, description, raw_content))
 
 
 async def semantic_command(query: str, sites: list[dict]) -> dict:
