@@ -22,9 +22,10 @@ router = APIRouter(prefix="/api/extension", tags=["extension"])
 class ExtensionSaveRequest(BaseModel):
     url:              str
     title:            str
-    source_type:      str = "webpage"            # webpage | article | video | tool | other
+    source_type:      str = "browser_extension"
     selected_text:    Optional[str] = None
     page_description: Optional[str] = None
+    note:             Optional[str] = None
 
 
 @router.post("/save")
@@ -85,7 +86,7 @@ async def extension_save(
         tags              = [t.lower() for t in ai.get("tags", [])],
         technologies      = ai.get("technologies", []),
         topics            = ai.get("topics", []),
-        notes             = "",
+        notes             = body.note or "",
         use_case          = ai.get("use_case", ""),
         learning_value    = ai.get("learning_value", "intermediate"),
         pinned            = False,
