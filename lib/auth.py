@@ -1,6 +1,7 @@
 """
 JWT + password utilities and FastAPI dependencies for authentication.
 """
+import bcrypt
 import jwt
 import logging
 from datetime import datetime, timedelta, timezone
@@ -8,7 +9,6 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
@@ -19,13 +19,11 @@ logger = logging.getLogger(__name__)
 
 # ── Password hashing ──────────────────────────────────────────────────────────
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
