@@ -44,7 +44,7 @@ _MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(32)",
     "ALTER TABLE users ADD COLUMN oauth_id VARCHAR(256)",
     # Enrichment pipeline columns
-    "ALTER TABLE sites ADD COLUMN enrichment_status VARCHAR(32) NOT NULL DEFAULT 'pending'",
+    "ALTER TABLE sites ADD COLUMN enrichment_status VARCHAR(32) NOT NULL DEFAULT 'completed'",
     "ALTER TABLE sites ADD COLUMN enrichment_error TEXT",
     "ALTER TABLE sites ADD COLUMN enriched_at DATETIME",
     "ALTER TABLE sites ADD COLUMN capture_method VARCHAR(64)",

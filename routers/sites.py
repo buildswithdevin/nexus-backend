@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -15,6 +16,8 @@ from lib.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sites", tags=["sites"])
+
+_UUID_RE = re.compile(r'^[0-9a-f-]{36}$', re.I)
 
 
 class SiteUpdate(BaseModel):
@@ -73,6 +76,36 @@ async def recent_sites(
     )
     sites = result.scalars().all()
     return {"sites": [s.to_dict() for s in sites]}
+
+
+@router.get("/enrichment-status")
+async def batch_enrichment_status(
+    ids: str           = Query(..., description="Comma-separated site IDs"),
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    id_list = [i.strip() for i in ids.split(",") if _UUID_RE.match(i.strip())][:50]
+    if not id_list:
+        return {"statuses": []}
+    result = await db.execute(
+        select(Site).where(Site.id.in_(id_list), Site.user_id == current_user.id)
+    )
+    sites = result.scalars().all()
+    return {
+        "statuses": [
+            {
+                "id": s.id,
+                "enrichment_status": s.enrichment_status or "completed",
+                "title": s.title,
+                "category": s.category,
+                "tags": s.tags or [],
+                "summary": s.summary,
+                "description": s.description,
+                "enrichment_error": s.enrichment_error,
+            }
+            for s in sites
+        ]
+    }
 
 
 @router.post("/clear-all")
