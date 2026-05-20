@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     host: str = "0.0.0.0"
     port: int = 8000
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_origins: str = "http://localhost:3000,http://localhost:5173,https://nexus-frontend-five-swart.vercel.app"
     scraper_timeout: int = 15
     max_content_length: int = 8000
 
