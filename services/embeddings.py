@@ -51,9 +51,7 @@ class EmbeddingService:
             site_data.get("notes", ""),
         ]
         text = " | ".join(p for p in parts if p).strip()
-        # When metadata is sparse (no summary/tags), enrich with raw page content
-        # so conceptual queries can match on actual page text
-        metadata_richness = sum(len(p) for p in parts[1:] if p)  # everything except title
+        metadata_richness = sum(len(p) for p in parts[1:] if p)
         raw = (site_data.get("raw_content") or "")[:800]
         if raw and metadata_richness < 60:
             text = f"{text} | {raw}"
@@ -62,40 +60,70 @@ class EmbeddingService:
     def embed_text(self, text: str) -> List[float]:
         return self._get_model().encode(text, normalize_embeddings=True).tolist()
 
-    def upsert(self, site_id: str, site_data: dict) -> str:
+    def upsert(self, site_id: str, site_data: dict, user_id: Optional[str] = None) -> str:
         text = self._build_text(site_data)
         vector = self.embed_text(text)
         collection = self._get_collection()
         chroma_id = f"site_{site_id}"
+        metadata: dict = {
+            "site_id":  site_id,
+            "title":    site_data.get("title", ""),
+            "url":      site_data.get("url", ""),
+            "category": site_data.get("category", ""),
+        }
+        if user_id:
+            metadata["user_id"] = user_id
         collection.upsert(
             ids=[chroma_id],
             embeddings=[vector],
-            metadatas=[{
-                "site_id":  site_id,
-                "title":    site_data.get("title", ""),
-                "url":      site_data.get("url", ""),
-                "category": site_data.get("category", ""),
-            }],
+            metadatas=[metadata],
             documents=[text],
         )
-        logger.info(f"Upserted vector for site {site_id}")
+        logger.info(f"Upserted vector for site {site_id} (user={user_id})")
         return chroma_id
 
-    def search(self, query: str, n_results: int = 10, where: Optional[dict] = None) -> List[dict]:
+    def search(
+        self,
+        query: str,
+        n_results: int = 10,
+        where: Optional[dict] = None,
+        user_id: Optional[str] = None,
+    ) -> List[dict]:
         query_vector = self.embed_text(query)
-        collection = self._get_collection()
-        count = collection.count()
+        collection   = self._get_collection()
+        count        = collection.count()
         if count == 0:
             return []
         n_results = min(n_results, count)
-        kwargs = {
+
+        # Build where clause
+        where_clause: Optional[dict] = None
+        if user_id and where:
+            where_clause = {"$and": [{"user_id": user_id}, where]}
+        elif user_id:
+            where_clause = {"user_id": user_id}
+        elif where:
+            where_clause = where
+
+        kwargs: dict = {
             "query_embeddings": [query_vector],
-            "n_results": n_results,
-            "include": ["metadatas", "distances", "documents"],
+            "n_results":        n_results,
+            "include":          ["metadatas", "distances", "documents"],
         }
-        if where:
-            kwargs["where"] = where
-        results = collection.query(**kwargs)
+        if where_clause:
+            kwargs["where"] = where_clause
+
+        try:
+            results = collection.query(**kwargs)
+        except Exception as e:
+            # ChromaDB can error if where filter matches nothing — fall back without filter
+            logger.warning(f"ChromaDB query error (falling back without filter): {e}")
+            results = collection.query(
+                query_embeddings=[query_vector],
+                n_results=n_results,
+                include=["metadatas", "distances", "documents"],
+            )
+
         hits = []
         if results["ids"] and results["ids"][0]:
             for i, _ in enumerate(results["ids"][0]):
@@ -111,8 +139,15 @@ class EmbeddingService:
         except Exception as e:
             logger.warning(f"Could not delete vector for {site_id}: {e}")
 
-    def stats(self) -> dict:
-        return {"total_vectors": self._get_collection().count()}
+    def stats(self, user_id: Optional[str] = None) -> dict:
+        collection = self._get_collection()
+        if user_id:
+            try:
+                result = collection.get(where={"user_id": user_id}, include=[])
+                return {"total_vectors": len(result["ids"])}
+            except Exception:
+                pass
+        return {"total_vectors": collection.count()}
 
 
 embedding_service = EmbeddingService()

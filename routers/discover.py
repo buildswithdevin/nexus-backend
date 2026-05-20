@@ -4,40 +4,39 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db import get_db
-from database.models import Cluster, Site
+from database.models import Cluster, Site, User
 from services.ai_analysis import generate_discover_suggestions
 from services.discovery_engine import generate_local_discover, search_discover
 from services.interest_profile import ensure_profile
+from lib.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/discover", tags=["discover"])
 
 
 @router.get("")
-async def get_discover(db: AsyncSession = Depends(get_db)):
-    """
-    Return personalized discovery recommendations.
-    Local engine always runs — AI enhances if available, never required.
-    Profile (likes/dislikes/recent queries) influences scoring.
-    """
+async def get_discover(
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(
-        select(Site).order_by(Site.created_at.desc()).limit(200)
+        select(Site)
+        .where(Site.user_id == current_user.id)
+        .order_by(Site.created_at.desc())
+        .limit(200)
     )
     sites   = result.scalars().all()
-    # Exclude restricted (flagged) sources from discovery entirely.
     sources = [s.to_dict() for s in sites if not s.restricted]
 
-    # Load clusters — their names act as additional interest signals
-    cluster_result = await db.execute(select(Cluster))
+    cluster_result = await db.execute(
+        select(Cluster).where(Cluster.user_id == current_user.id)
+    )
     clusters = [c.to_dict() for c in cluster_result.scalars().all()]
 
-    # Load user profile (creates one if absent)
-    profile = await ensure_profile(db)
+    profile = await ensure_profile(db, current_user.id)
 
-    # ── Step 1: local engine (always works) ─────────────────────────────────
     data = generate_local_discover(sources, user_profile=profile, clusters=clusters)
 
-    # ── Step 2: optional AI enhancement ─────────────────────────────────────
     try:
         ai = await generate_discover_suggestions(sources)
         if ai and not data.get("starter_mode"):
@@ -45,7 +44,6 @@ async def get_discover(db: AsyncSession = Depends(get_db)):
                 data["interest_summary"] = ai["interest_summary"]
             if ai.get("top_interests") and len(ai["top_interests"]) > len(data.get("top_interests", [])):
                 data["top_interests"] = ai["top_interests"]
-            # Merge new AI suggestions (deduplicate by topic)
             existing_topics = {s["topic"] for s in data.get("suggestions", [])}
             for s in ai.get("suggestions", []):
                 if s.get("topic") not in existing_topics:
@@ -53,19 +51,22 @@ async def get_discover(db: AsyncSession = Depends(get_db)):
                     existing_topics.add(s["topic"])
             logger.info("AI enhancement applied to discover results")
     except Exception as e:
-        logger.info(f"AI discover enhancement skipped ({type(e).__name__}) — using local results")
+        logger.info(f"AI discover enhancement skipped ({type(e).__name__})")
 
     return data
 
 
 @router.get("/search")
 async def discover_search(
-    q: str = Query(..., min_length=1),
-    db: AsyncSession = Depends(get_db),
+    q: str              = Query(..., min_length=1),
+    db: AsyncSession    = Depends(get_db),
+    current_user: User  = Depends(get_current_user),
 ):
-    """Search the library + curated recommendations simultaneously."""
     result = await db.execute(
-        select(Site).order_by(Site.created_at.desc()).limit(200)
+        select(Site)
+        .where(Site.user_id == current_user.id)
+        .order_by(Site.created_at.desc())
+        .limit(200)
     )
     sites   = result.scalars().all()
     sources = [s.to_dict() for s in sites if not s.restricted]

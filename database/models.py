@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Text, Boolean, DateTime, JSON
+from sqlalchemy import String, Text, Boolean, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from database.db import Base
 
@@ -14,12 +14,33 @@ def new_id() -> str:
     return str(uuid.uuid4())
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id:              Mapped[str]           = mapped_column(String,       primary_key=True, default=new_id)
+    username:        Mapped[str]           = mapped_column(String(64),   nullable=False, unique=True, index=True)
+    email:           Mapped[str]           = mapped_column(String(256),  nullable=False, unique=True, index=True)
+    display_name:    Mapped[str]           = mapped_column(String(128),  nullable=False)
+    hashed_password: Mapped[str]           = mapped_column(String(256),  nullable=False)
+    created_at:      Mapped[datetime]      = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id":           self.id,
+            "username":     self.username,
+            "email":        self.email,
+            "display_name": self.display_name,
+            "created_at":   self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class Site(Base):
     __tablename__ = "sites"
 
     id:             Mapped[str]            = mapped_column(String,        primary_key=True, default=new_id)
+    user_id:        Mapped[Optional[str]]  = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title:          Mapped[str]            = mapped_column(String(512),   nullable=False)
-    url:            Mapped[str]            = mapped_column(String(2048),  nullable=False, unique=True, index=True)
+    url:            Mapped[str]            = mapped_column(String(2048),  nullable=False, index=True)
     description:    Mapped[Optional[str]]  = mapped_column(Text)
     summary:        Mapped[Optional[str]]  = mapped_column(Text)
     favicon_url:    Mapped[Optional[str]]  = mapped_column(String(2048))
@@ -64,14 +85,14 @@ class Site(Base):
 class UserProfile(Base):
     __tablename__ = "user_profile"
 
-    id:                  Mapped[str]            = mapped_column(String, primary_key=True, default=lambda: "default")
-    liked_tags:          Mapped[Optional[dict]] = mapped_column(JSON, default=dict)    # {tag: weight}
-    disliked_tags:       Mapped[Optional[dict]] = mapped_column(JSON, default=dict)    # {tag: weight}
-    liked_categories:    Mapped[Optional[dict]] = mapped_column(JSON, default=dict)    # {cat: weight}
-    disliked_categories: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)    # {cat: weight}
-    saved_topics:        Mapped[Optional[list]] = mapped_column(JSON, default=list)    # [topic str]
-    dismissed_topics:    Mapped[Optional[list]] = mapped_column(JSON, default=list)    # [topic str]
-    recent_queries:      Mapped[Optional[list]] = mapped_column(JSON, default=list)    # [{query,keywords,tags,categories,timestamp}]
+    id:                  Mapped[str]            = mapped_column(String, primary_key=True)
+    liked_tags:          Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    disliked_tags:       Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    liked_categories:    Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    disliked_categories: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    saved_topics:        Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    dismissed_topics:    Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    recent_queries:      Mapped[Optional[list]] = mapped_column(JSON, default=list)
     updated_at:          Mapped[datetime]       = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     def to_dict(self) -> dict:
@@ -91,6 +112,7 @@ class Cluster(Base):
     __tablename__ = "clusters"
 
     id:            Mapped[str]            = mapped_column(String,       primary_key=True, default=new_id)
+    user_id:       Mapped[Optional[str]]  = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     name:          Mapped[str]            = mapped_column(String(256),  nullable=False)
     description:   Mapped[Optional[str]]  = mapped_column(Text)
     color:         Mapped[Optional[str]]  = mapped_column(String(16))

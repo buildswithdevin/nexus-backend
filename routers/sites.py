@@ -6,9 +6,10 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db import get_db
-from database.models import Site
+from database.models import Site, User
 from services.embeddings import embedding_service
 from services.collections import reassign_source
+from lib.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sites", tags=["sites"])
@@ -33,8 +34,13 @@ async def list_sites(
     limit:    int            = Query(100, ge=1, le=500),
     offset:   int            = Query(0, ge=0),
     db: AsyncSession         = Depends(get_db),
+    current_user: User       = Depends(get_current_user),
 ):
-    stmt = select(Site).order_by(Site.pinned.desc(), Site.created_at.desc())
+    stmt = (
+        select(Site)
+        .where(Site.user_id == current_user.id)
+        .order_by(Site.pinned.desc(), Site.created_at.desc())
+    )
     if category:
         stmt = stmt.where(Site.category == category)
     if pinned is not None:
@@ -50,17 +56,26 @@ async def list_sites(
 
 
 @router.get("/{site_id}")
-async def get_site(site_id: str, db: AsyncSession = Depends(get_db)):
+async def get_site(
+    site_id: str,
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     site = await db.get(Site, site_id)
-    if not site:
+    if not site or site.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Site not found")
     return site.to_dict()
 
 
 @router.put("/{site_id}")
-async def update_site(site_id: str, body: SiteUpdate, db: AsyncSession = Depends(get_db)):
+async def update_site(
+    site_id: str,
+    body: SiteUpdate,
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     site = await db.get(Site, site_id)
-    if not site:
+    if not site or site.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Site not found")
     updated = body.model_dump(exclude_none=True)
     for field, value in updated.items():
@@ -69,7 +84,7 @@ async def update_site(site_id: str, body: SiteUpdate, db: AsyncSession = Depends
     re_embed = any(f in updated for f in ("title", "tags", "topics", "technologies", "category"))
     if re_embed:
         try:
-            embedding_service.upsert(site.id, site.to_dict())
+            embedding_service.upsert(site.id, site.to_dict(), user_id=current_user.id)
         except Exception as e:
             logger.warning(f"Re-embed failed for {site_id}: {e}")
         try:
@@ -80,9 +95,13 @@ async def update_site(site_id: str, body: SiteUpdate, db: AsyncSession = Depends
 
 
 @router.delete("/{site_id}")
-async def delete_site(site_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_site(
+    site_id: str,
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     site = await db.get(Site, site_id)
-    if not site:
+    if not site or site.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Site not found")
     embedding_service.delete(site_id)
     await db.delete(site)
@@ -90,15 +109,18 @@ async def delete_site(site_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/clear-all")
-async def clear_all_sites(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Site))
-    sites = result.scalars().all()
-    count = len(sites)
+async def clear_all_sites(
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Site).where(Site.user_id == current_user.id))
+    sites  = result.scalars().all()
+    count  = len(sites)
     for site in sites:
         try:
             embedding_service.delete(site.id)
         except Exception as e:
             logger.warning(f"Embedding delete failed for {site.id}: {e}")
-    await db.execute(delete(Site))
-    logger.info(f"Cleared all {count} sites and embeddings")
+    await db.execute(delete(Site).where(Site.user_id == current_user.id))
+    logger.info(f"User {current_user.id} cleared {count} sites")
     return {"deleted": count, "message": f"Removed {count} sources from NEXUS"}

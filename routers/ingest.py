@@ -8,12 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db import get_db
-from database.models import Site
+from database.models import Site, User
 from services.scraper import scrape
 from services.ai_analysis import analyze_site
 from services.embeddings import embedding_service
 from services.collections import auto_assign_to_collection
 from services.safety import classify_content, log_blocked
+from lib.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["ingest"])
@@ -30,10 +31,17 @@ class IngestRequest(BaseModel):
 
 
 @router.post("/ingest")
-async def ingest_site(body: IngestRequest, db: AsyncSession = Depends(get_db)):
+async def ingest_site(
+    body: IngestRequest,
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     url = str(body.url).strip().rstrip("/")
 
-    existing = await db.execute(select(Site).where(Site.url == url))
+    # Check duplicate per-user
+    existing = await db.execute(
+        select(Site).where(Site.url == url, Site.user_id == current_user.id)
+    )
     existing_site = existing.scalar_one_or_none()
     if existing_site:
         return {
@@ -60,15 +68,13 @@ async def ingest_site(body: IngestRequest, db: AsyncSession = Depends(get_db)):
 
     title = scraped_title or url
 
-    # ── Safety check ──────────────────────────────────────────────────────────────
     content_safety = classify_content(title, url, scraped_content[:2000] if scraped_content else "")
     is_restricted  = not content_safety.safe
 
     if is_restricted:
         log_blocked(f"{title} | {url}", content_safety.category or "unknown", "flagged_ingest")
-        logger.warning(f"Restricted content flagged on ingest: {url} (category={content_safety.category})")
+        logger.warning(f"Restricted content flagged: {url} (category={content_safety.category})")
 
-    # Don't run AI analysis on restricted content — no summarising harmful instructions.
     if is_restricted:
         ai: dict = {
             "summary":        "This content has been flagged and will not be analysed.",
@@ -93,6 +99,7 @@ async def ingest_site(body: IngestRequest, db: AsyncSession = Depends(get_db)):
 
     site = Site(
         id                 = str(uuid.uuid4()),
+        user_id            = current_user.id,
         title              = title,
         url                = url,
         description        = body.description or ai.get("summary", ""),
@@ -113,7 +120,7 @@ async def ingest_site(body: IngestRequest, db: AsyncSession = Depends(get_db)):
 
     try:
         embed_data     = {**site.to_dict(), "raw_content": site.raw_content or ""}
-        chroma_id      = embedding_service.upsert(site.id, embed_data)
+        chroma_id      = embedding_service.upsert(site.id, embed_data, user_id=current_user.id)
         site.chroma_id = chroma_id
     except Exception as e:
         logger.error(f"Embedding failed for {url}: {e}")
@@ -121,15 +128,16 @@ async def ingest_site(body: IngestRequest, db: AsyncSession = Depends(get_db)):
     db.add(site)
     await db.flush()
 
-    # ── Auto-assign to collection ──────────────────────────────────────────────
     collection_info: dict | None = None
     try:
         collection_info = await auto_assign_to_collection(site, db)
     except Exception as e:
         logger.warning(f"Collection auto-assign failed for {site.id}: {e}")
 
-    logger.info(f"Ingested: {title} ({url})"
-                + (f" → collection '{collection_info['cluster_name']}'" if collection_info else ""))
+    logger.info(
+        f"Ingested: {title} ({url})"
+        + (f" → collection '{collection_info['cluster_name']}'" if collection_info else "")
+    )
 
     return {
         "status":     "created",

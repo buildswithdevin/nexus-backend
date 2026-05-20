@@ -5,27 +5,45 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db import get_db
-from database.models import Site, Cluster
+from database.models import Site, Cluster, User
 from services.embeddings import embedding_service
+from lib.auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["export"])
 
 
 @router.get("/export")
-async def export_all(db: AsyncSession = Depends(get_db)):
-    sites_result    = await db.execute(select(Site).order_by(Site.created_at))
-    sites           = [s.to_dict() for s in sites_result.scalars().all()]
-    clusters_result = await db.execute(select(Cluster).order_by(Cluster.created_at))
-    clusters        = [c.to_dict() for c in clusters_result.scalars().all()]
-    vector_stats    = embedding_service.stats()
+async def export_all(
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sites_result    = await db.execute(
+        select(Site).where(Site.user_id == current_user.id).order_by(Site.created_at)
+    )
+    sites = [s.to_dict() for s in sites_result.scalars().all()]
+
+    clusters_result = await db.execute(
+        select(Cluster).where(Cluster.user_id == current_user.id).order_by(Cluster.created_at)
+    )
+    clusters     = [c.to_dict() for c in clusters_result.scalars().all()]
+    vector_stats = embedding_service.stats(user_id=current_user.id)
+
     payload = {
         "export_version": "2.0",
         "exported_at":    datetime.now(timezone.utc).isoformat(),
-        "stats": {"total_sites": len(sites), "total_clusters": len(clusters), "total_vectors": vector_stats.get("total_vectors", 0)},
+        "stats": {
+            "total_sites":    len(sites),
+            "total_clusters": len(clusters),
+            "total_vectors":  vector_stats.get("total_vectors", 0),
+        },
         "sites":    sites,
         "clusters": clusters,
     }
     return JSONResponse(
         content=payload,
-        headers={"Content-Disposition": f'attachment; filename="nexus-export-{datetime.now().strftime("%Y%m%d-%H%M%S")}.json"'},
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="nexus-export-{datetime.now().strftime("%Y%m%d-%H%M%S")}.json"'
+            )
+        },
     )

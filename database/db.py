@@ -32,16 +32,23 @@ async def get_db():
             await session.close()
 
 
+_MIGRATIONS = [
+    # Safety columns (pre-auth era)
+    "ALTER TABLE sites ADD COLUMN restricted BOOLEAN NOT NULL DEFAULT 0",
+    "ALTER TABLE sites ADD COLUMN restricted_reason VARCHAR(128)",
+    # Multi-user columns
+    "ALTER TABLE sites ADD COLUMN user_id VARCHAR",
+    "ALTER TABLE clusters ADD COLUMN user_id VARCHAR",
+    # url uniqueness constraint was global — now per-user via code (SQLite can't drop unique easily)
+]
+
+
 async def init_db():
-    from database.models import Site, Cluster  # noqa: F401
+    from database.models import User, Site, Cluster, UserProfile  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Add safety columns to existing databases (SQLite ignores errors if column exists)
-        for col_def in [
-            "ALTER TABLE sites ADD COLUMN restricted BOOLEAN NOT NULL DEFAULT 0",
-            "ALTER TABLE sites ADD COLUMN restricted_reason VARCHAR(128)",
-        ]:
+        for stmt in _MIGRATIONS:
             try:
-                await conn.execute(text(col_def))
+                await conn.execute(text(stmt))
             except Exception:
-                pass  # Column already exists
+                pass  # column already exists

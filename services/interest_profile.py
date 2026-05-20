@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import UserProfile
 
 logger = logging.getLogger(__name__)
-_PROFILE_ID = "default"
 
 # ── Intent → tags/categories mapping ─────────────────────────────────────────
 
@@ -180,17 +179,17 @@ def extract_query_intent(query: str) -> dict:
 
 # ── Profile helpers ───────────────────────────────────────────────────────────
 
-async def ensure_profile(db: AsyncSession) -> UserProfile:
-    profile = await db.get(UserProfile, _PROFILE_ID)
+async def ensure_profile(db: AsyncSession, user_id: str) -> UserProfile:
+    profile = await db.get(UserProfile, user_id)
     if not profile:
-        profile = UserProfile(id=_PROFILE_ID)
+        profile = UserProfile(id=user_id)
         db.add(profile)
         await db.flush()
     return profile
 
 
-async def get_profile_dict(db: AsyncSession) -> dict:
-    profile = await db.get(UserProfile, _PROFILE_ID)
+async def get_profile_dict(db: AsyncSession, user_id: str) -> dict:
+    profile = await db.get(UserProfile, user_id)
     return profile.to_dict() if profile else {}
 
 

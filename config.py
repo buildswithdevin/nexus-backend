@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from typing import List
 import os
+import secrets
 
 
 class Settings(BaseSettings):
@@ -13,6 +14,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     scraper_timeout: int = 15
     max_content_length: int = 8000
+
+    # Auth
+    jwt_secret: str = secrets.token_hex(32)   # override via env var in production
+    jwt_algorithm: str = "HS256"
+    jwt_expire_days: int = 30
 
     @property
     def cors_origins_list(self) -> List[str]:
