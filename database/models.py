@@ -21,7 +21,9 @@ class User(Base):
     username:        Mapped[str]           = mapped_column(String(64),   nullable=False, unique=True, index=True)
     email:           Mapped[str]           = mapped_column(String(256),  nullable=False, unique=True, index=True)
     display_name:    Mapped[str]           = mapped_column(String(128),  nullable=False)
-    hashed_password: Mapped[str]           = mapped_column(String(256),  nullable=False)
+    hashed_password: Mapped[str]           = mapped_column(String(256),  nullable=False, default="")
+    oauth_provider:  Mapped[Optional[str]] = mapped_column(String(32),   nullable=True)
+    oauth_id:        Mapped[Optional[str]] = mapped_column(String(256),  nullable=True, index=True)
     created_at:      Mapped[datetime]      = mapped_column(DateTime(timezone=True), default=utcnow)
 
     def to_dict(self) -> dict:

@@ -40,6 +40,9 @@ _MIGRATIONS = [
     "ALTER TABLE sites ADD COLUMN user_id VARCHAR",
     "ALTER TABLE clusters ADD COLUMN user_id VARCHAR",
     # url uniqueness constraint was global — now per-user via code (SQLite can't drop unique easily)
+    # OAuth columns
+    "ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(32)",
+    "ALTER TABLE users ADD COLUMN oauth_id VARCHAR(256)",
 ]
 
 

@@ -10,6 +10,7 @@ from database.db import init_db
 from services.embeddings import embedding_service
 from routers import sites, ingest, search, export, clusters, insights, discover, profile
 from routers.auth import router as auth_router
+from routers.oauth import router as oauth_router
 from routers.extension import router as extension_router
 
 logging.basicConfig(
@@ -54,6 +55,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(oauth_router)
 app.include_router(extension_router)
 app.include_router(sites.router)
 app.include_router(ingest.router)

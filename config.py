@@ -20,6 +20,18 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_days: int = 30
 
+    # URLs (used for OAuth callbacks)
+    backend_url:  str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3000"
+
+    # OAuth — set in Render env vars
+    google_client_id:      str = ""
+    google_client_secret:  str = ""
+    microsoft_client_id:   str = ""
+    microsoft_client_secret: str = ""
+    github_client_id:      str = ""
+    github_client_secret:  str = ""
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
