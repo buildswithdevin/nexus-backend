@@ -1,14 +1,16 @@
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db import get_db
-from database.models import Site, User
+from database.models import Site, SourceRelationship, User
 from services.embeddings import embedding_service
 from services.collections import reassign_source
+from services.enrichment import run_enrichment
+from services.relationships import detect_and_save_relationships
 from lib.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,42 @@ async def list_sites(
     total = len(sites)
     sites = sites[offset: offset + limit]
     return {"total": total, "offset": offset, "limit": limit, "sites": [s.to_dict() for s in sites]}
+
+
+# Static sub-routes must come before /{site_id} to avoid shadowing
+
+@router.get("/recent")
+async def recent_sites(
+    limit: int         = Query(10, ge=1, le=50),
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Site)
+        .where(Site.user_id == current_user.id)
+        .order_by(Site.created_at.desc())
+        .limit(limit)
+    )
+    sites = result.scalars().all()
+    return {"sites": [s.to_dict() for s in sites]}
+
+
+@router.post("/clear-all")
+async def clear_all_sites(
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Site).where(Site.user_id == current_user.id))
+    sites  = result.scalars().all()
+    count  = len(sites)
+    for site in sites:
+        try:
+            embedding_service.delete(site.id)
+        except Exception as e:
+            logger.warning(f"Embedding delete failed for {site.id}: {e}")
+    await db.execute(delete(Site).where(Site.user_id == current_user.id))
+    logger.info(f"User {current_user.id} cleared {count} sites")
+    return {"deleted": count, "message": f"Removed {count} sources from NEXUS"}
 
 
 @router.get("/{site_id}")
@@ -108,19 +146,52 @@ async def delete_site(
     return {"deleted": site_id}
 
 
-@router.post("/clear-all")
-async def clear_all_sites(
+@router.get("/{site_id}/related")
+async def related_sites(
+    site_id: str,
+    limit: int         = Query(10, ge=1, le=50),
     db: AsyncSession   = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Site).where(Site.user_id == current_user.id))
-    sites  = result.scalars().all()
-    count  = len(sites)
-    for site in sites:
-        try:
-            embedding_service.delete(site.id)
-        except Exception as e:
-            logger.warning(f"Embedding delete failed for {site.id}: {e}")
-    await db.execute(delete(Site).where(Site.user_id == current_user.id))
-    logger.info(f"User {current_user.id} cleared {count} sites")
-    return {"deleted": count, "message": f"Removed {count} sources from NEXUS"}
+    site = await db.get(Site, site_id)
+    if not site or site.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    result = await db.execute(
+        select(SourceRelationship)
+        .where(SourceRelationship.source_id == site_id)
+        .order_by(SourceRelationship.confidence_score.desc())
+        .limit(limit)
+    )
+    rels = result.scalars().all()
+
+    related = []
+    for rel in rels:
+        related_site = await db.get(Site, rel.related_source_id)
+        if related_site and related_site.user_id == current_user.id:
+            related.append({**rel.to_dict(), "site": related_site.to_dict()})
+
+    return {"site_id": site_id, "related": related}
+
+
+@router.post("/{site_id}/reanalyze")
+async def reanalyze_site(
+    site_id: str,
+    background: BackgroundTasks,
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    site = await db.get(Site, site_id)
+    if not site or site.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if site.enrichment_status == "processing":
+        return {"status": "already_processing", "message": "Enrichment already in progress"}
+
+    site.enrichment_status = "pending"
+    site.enrichment_error  = None
+    await db.flush()
+
+    background.add_task(run_enrichment, site_id, site.raw_content or "")
+    background.add_task(detect_and_save_relationships, site_id)
+
+    return {"status": "queued", "message": "Re-analysis queued", "site_id": site_id}

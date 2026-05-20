@@ -43,11 +43,19 @@ _MIGRATIONS = [
     # OAuth columns
     "ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(32)",
     "ALTER TABLE users ADD COLUMN oauth_id VARCHAR(256)",
+    # Enrichment pipeline columns
+    "ALTER TABLE sites ADD COLUMN enrichment_status VARCHAR(32) NOT NULL DEFAULT 'pending'",
+    "ALTER TABLE sites ADD COLUMN enrichment_error TEXT",
+    "ALTER TABLE sites ADD COLUMN enriched_at DATETIME",
+    "ALTER TABLE sites ADD COLUMN capture_method VARCHAR(64)",
+    "ALTER TABLE sites ADD COLUMN duplicate_of_id VARCHAR",
+    "ALTER TABLE sites ADD COLUMN importance_score REAL",
+    "ALTER TABLE sites ADD COLUMN content_type VARCHAR(64)",
 ]
 
 
 async def init_db():
-    from database.models import User, Site, Cluster, UserProfile  # noqa: F401
+    from database.models import User, Site, Cluster, UserProfile, SourceRelationship  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         for stmt in _MIGRATIONS:

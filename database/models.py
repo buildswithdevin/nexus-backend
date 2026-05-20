@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Text, Boolean, DateTime, JSON, ForeignKey
+from sqlalchemy import String, Text, Boolean, DateTime, JSON, ForeignKey, Float
 from sqlalchemy.orm import Mapped, mapped_column
 from database.db import Base
 
@@ -58,6 +58,14 @@ class Site(Base):
     chroma_id:         Mapped[Optional[str]]  = mapped_column(String(128))
     restricted:        Mapped[bool]           = mapped_column(Boolean, default=False)
     restricted_reason: Mapped[Optional[str]]  = mapped_column(String(128))
+    # Enrichment pipeline fields
+    enrichment_status: Mapped[str]            = mapped_column(String(32), default="pending")
+    enrichment_error:  Mapped[Optional[str]]  = mapped_column(Text)
+    enriched_at:       Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    capture_method:    Mapped[Optional[str]]  = mapped_column(String(64))
+    duplicate_of_id:   Mapped[Optional[str]]  = mapped_column(String, ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
+    importance_score:  Mapped[Optional[float]] = mapped_column(Float)
+    content_type:      Mapped[Optional[str]]  = mapped_column(String(64))
     created_at:        Mapped[datetime]       = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at:        Mapped[datetime]       = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -79,6 +87,13 @@ class Site(Base):
             "learning_value":    self.learning_value,
             "restricted":        bool(self.restricted),
             "restricted_reason": self.restricted_reason,
+            "enrichment_status": self.enrichment_status or "pending",
+            "enrichment_error":  self.enrichment_error,
+            "enriched_at":       self.enriched_at.isoformat() if self.enriched_at else None,
+            "capture_method":    self.capture_method,
+            "duplicate_of_id":   self.duplicate_of_id,
+            "importance_score":  self.importance_score,
+            "content_type":      self.content_type,
             "created_at":        self.created_at.isoformat() if self.created_at else None,
             "updated_at":        self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -107,6 +122,30 @@ class UserProfile(Base):
             "dismissed_topics":    self.dismissed_topics or [],
             "recent_queries":      self.recent_queries or [],
             "updated_at":          self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class SourceRelationship(Base):
+    __tablename__ = "source_relationships"
+
+    id:                 Mapped[str]           = mapped_column(String, primary_key=True, default=new_id)
+    user_id:            Mapped[str]           = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id:          Mapped[str]           = mapped_column(String, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
+    related_source_id:  Mapped[str]           = mapped_column(String, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    relationship_type:  Mapped[str]           = mapped_column(String(32), nullable=False)
+    confidence_score:   Mapped[float]         = mapped_column(Float, default=0.0)
+    reason:             Mapped[Optional[str]] = mapped_column(Text)
+    created_at:         Mapped[datetime]      = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id":                self.id,
+            "source_id":         self.source_id,
+            "related_source_id": self.related_source_id,
+            "relationship_type": self.relationship_type,
+            "confidence_score":  self.confidence_score,
+            "reason":            self.reason,
+            "created_at":        self.created_at.isoformat() if self.created_at else None,
         }
 
 
