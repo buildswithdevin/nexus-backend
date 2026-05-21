@@ -8,23 +8,124 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-CATEGORIES = [
-    # Technical
-    "AI & ML", "Cybersecurity", "Robotics", "Embedded Systems",
-    "Development", "Design", "Data Science", "Cloud & DevOps", "Hardware",
-    # Knowledge
-    "Research", "Productivity", "Education",
-    # Lifestyle / consumer
-    "Food & Cooking", "Health & Wellness", "Gaming", "Home & Living",
-    "Shopping", "Outdoor & Sports", "Pets", "Travel",
-    # Media / general
-    "News & Media", "Science", "Business & Finance", "Entertainment", "Other",
-]
+# Rich taxonomy used as AI hints — organized by domain
+CATEGORY_TAXONOMY: dict[str, list[str]] = {
+    "Technology": [
+        "Programming", "Web Development", "Machine Learning", "Deep Learning",
+        "Natural Language Processing", "Computer Vision", "Data Science",
+        "Cybersecurity", "DevOps & Cloud", "Cloud Computing", "Networking",
+        "Linux & System Administration", "Embedded Systems", "IoT",
+        "Robotics", "Hardware & Electronics", "Game Development",
+        "Computer Graphics", "Distributed Systems", "Algorithms & Data Structures",
+        "Databases", "Reverse Engineering", "Homelabs & Self-Hosting",
+        "Mobile Development", "API Development", "Compilers & Languages",
+        "Computer Architecture", "Operating Systems", "System Design",
+    ],
+    "Science": [
+        "Physics", "Chemistry", "Biology", "Neuroscience",
+        "Astronomy & Space", "Genetics & Genomics", "Environmental Science",
+        "Earth Science", "Microbiology", "Ecology", "Scientific Research",
+        "Immunology", "Botany & Zoology",
+    ],
+    "Mathematics": [
+        "Calculus & Analysis", "Linear Algebra", "Statistics & Probability",
+        "Discrete Mathematics", "Number Theory", "Applied Mathematics",
+        "Mathematical Logic", "Mathematical Modeling",
+    ],
+    "Engineering": [
+        "Mechanical Engineering", "Electrical Engineering", "Civil Engineering",
+        "Aerospace Engineering", "Chemical Engineering", "Biomedical Engineering",
+        "Materials Science", "Manufacturing & CAD", "Renewable Energy",
+        "Electronics & Circuits", "Industrial Engineering",
+    ],
+    "Medicine & Health": [
+        "Medicine & Healthcare", "Mental Health & Psychology",
+        "Nutrition & Dietetics", "Fitness & Exercise Science",
+        "Pharmacology", "Public Health & Epidemiology",
+        "Medical Research", "Anatomy & Physiology",
+        "Preventive Health", "Sleep & Recovery", "Nursing",
+        "Physical Therapy", "Emergency Medicine",
+    ],
+    "Business & Finance": [
+        "Startups & Entrepreneurship", "Marketing & Growth",
+        "Finance & Investing", "Cryptocurrency & Web3",
+        "Economics & Macroeconomics", "eCommerce & SaaS",
+        "Management & Leadership", "Productivity & Systems",
+        "Personal Finance", "Real Estate", "Sales",
+        "Trading & Markets", "Taxes", "Business Strategy",
+    ],
+    "Social Sciences": [
+        "Sociology & Anthropology", "Political Science",
+        "International Relations", "Law & Legal Studies",
+        "Urban Studies & Geography", "Communication Studies",
+        "Criminology", "Psychology",
+    ],
+    "Humanities": [
+        "History", "Philosophy & Ethics", "Religion & Theology",
+        "Literature & Writing", "Linguistics", "Cultural Studies",
+        "Classics", "Government",
+    ],
+    "Arts & Creative": [
+        "Design & UX/UI", "Graphic Design", "Visual Art & Illustration",
+        "Photography", "Film & Video Production", "Music & Audio",
+        "Architecture", "Fashion & Style", "Creative Writing",
+        "Content Creation", "Poetry", "Sculpture",
+    ],
+    "Education": [
+        "Learning Resources & Courses", "Research Papers & Journals",
+        "Tutorials & How-Tos", "Study Materials",
+        "Certifications & Exams", "Documentation",
+        "Flashcards & Notes", "Academic Journals",
+    ],
+    "Trades & Practical Skills": [
+        "Automotive & Mechanics", "Construction & Carpentry",
+        "Electrical Work & HVAC", "Welding & Fabrication",
+        "Home Improvement & DIY", "Plumbing", "Appliance Repair",
+    ],
+    "Entertainment & Media": [
+        "Gaming", "Movies & Film", "TV & Streaming",
+        "Anime & Manga", "Books & Comics", "Podcasts",
+        "Sports & Esports", "Board Games & TCGs", "Music & Concerts",
+    ],
+    "Lifestyle": [
+        "Cooking & Food", "Travel & Adventure",
+        "Fitness & Wellness", "Outdoor & Hiking",
+        "Pets & Animals", "Home & Living",
+        "Personal Growth & Mindset", "Coffee & Tea",
+        "Gardening & Plants", "Fashion & Lifestyle",
+        "Watches & Luxury", "Survival & Prepping",
+        "Martial Arts & Combat Sports",
+    ],
+    "General": [
+        "News & Media", "Tools & Apps",
+        "Ideas & Inspiration", "Projects & Planning",
+        "Shopping & Product Research", "Read Later",
+    ],
+}
 
-_TECH_CATEGORIES = frozenset({
-    "AI & ML", "Cybersecurity", "Robotics", "Embedded Systems",
-    "Development", "Design", "Data Science", "Cloud & DevOps", "Hardware",
+# Flat list of all categories (for local fallback and AI validation)
+CATEGORIES: list[str] = [cat for cats in CATEGORY_TAXONOMY.values() for cat in cats]
+CATEGORIES.append("Other")
+
+# Keywords that indicate a category is technical — used for tag sanitization
+_TECH_DOMAIN_KEYWORDS = frozenset({
+    "programming", "web development", "machine learning", "deep learning",
+    "natural language", "computer vision", "data science",
+    "cybersecurity", "devops", "cloud computing", "networking",
+    "linux", "system admin", "embedded systems", "iot", "robotics",
+    "hardware", "game development", "computer graphics", "distributed systems",
+    "algorithms", "databases", "reverse engineering", "homelabs",
+    "mobile development", "api development", "compilers", "computer architecture",
+    "operating systems", "system design", "artificial intelligence",
+    # Old category names for backward compat
+    "development", "ai & ml", "cloud & devops", "design",
 })
+
+def _is_tech_category(category: str) -> bool:
+    """Return True if a category string is technology-related."""
+    cat = category.lower()
+    return any(kw in cat for kw in _TECH_DOMAIN_KEYWORDS)
+
 
 # Tags that are only plausible if the content is genuinely technical
 _TECH_ONLY_TAGS = frozenset({
@@ -35,6 +136,75 @@ _TECH_ONLY_TAGS = frozenset({
     "security", "cybersecurity", "hacking", "pentest",
     "database", "sql", "backend", "frontend", "developer-tools",
 })
+
+# ── Tag normalization ──────────────────────────────────────────────────────────
+
+_TAG_ALIASES: dict[str, str] = {
+    # AI / ML variants
+    "a.i.": "ai", "a.i": "ai", "artificial intelligence": "ai",
+    "artificial-intelligence": "ai",
+    "llm": "llm", "large language model": "llm", "large-language-model": "llm",
+    "ml": "machine-learning", "machine learning": "machine-learning",
+    "deep learning": "deep-learning", "dl": "deep-learning",
+    "neural network": "neural-networks", "neural networks": "neural-networks",
+    "nlp": "nlp", "natural language processing": "nlp",
+    "generative ai": "generative-ai", "gen ai": "generative-ai",
+    # Programming languages
+    "js": "javascript", "javascript": "javascript",
+    "ts": "typescript",
+    "py": "python", "python3": "python",
+    "react.js": "react", "reactjs": "react",
+    "node.js": "nodejs", "node": "nodejs",
+    "next.js": "nextjs",
+    "vue.js": "vue", "vuejs": "vue",
+    "c++": "cpp", "c plus plus": "cpp",
+    "golang": "go", "go lang": "go",
+    "rust lang": "rust",
+    # Dev concepts
+    "rest api": "api", "rest-api": "api", "apis": "api",
+    "open source": "open-source", "oss": "open-source",
+    "developer tools": "developer-tools", "dev tools": "developer-tools",
+    # Security
+    "cyber security": "cybersecurity", "infosec": "cybersecurity",
+    "pentesting": "pentest", "penetration testing": "pentest",
+    # Cloud
+    "amazon web services": "aws",
+    "google cloud platform": "gcp", "google cloud": "gcp",
+    "microsoft azure": "azure",
+    # Business
+    "startup": "startups", "start up": "startups", "start-up": "startups",
+    # Design
+    "ux design": "ux", "ui design": "ui", "ux/ui": "ui-ux", "ui/ux": "ui-ux",
+    # Food
+    "recipes": "recipe",
+    # Misc
+    "cryptocurrency": "crypto", "cryptocurrencies": "crypto",
+    "open ai": "openai",
+}
+
+
+def normalize_tag(tag: str) -> str:
+    """Return the canonical lowercase-hyphenated form of a tag."""
+    cleaned = tag.lower().strip()
+    if cleaned in _TAG_ALIASES:
+        return _TAG_ALIASES[cleaned]
+    normalized = re.sub(r"[^\w\s\-]", "", cleaned)
+    normalized = re.sub(r"\s+", "-", normalized.strip())
+    normalized = re.sub(r"-+", "-", normalized).strip("-")
+    return normalized or cleaned
+
+
+def normalize_tags(tags: list[str]) -> list[str]:
+    """Normalize a list of tags and deduplicate while preserving order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for tag in tags:
+        norm = normalize_tag(tag)
+        if norm and norm not in seen:
+            seen.add(norm)
+            result.append(norm)
+    return result
+
 
 # ── Local fallback analysis ────────────────────────────────────────────────────
 
@@ -354,13 +524,15 @@ def _local_analyze_site(url: str, title: str, description: str = "", raw_content
     use_case = use_case_map.get(category, "A reference saved to your NEXUS library.")
 
     return {
-        "summary": summary[:500],
-        "category": category,
-        "tags": found_tags[:5],
-        "technologies": [],
-        "topics": [category] if category != "Other" else [],
-        "use_case": use_case,
-        "learning_value": "intermediate",
+        "summary":          summary[:500],
+        "primary_category": category,
+        "categories":       [category] if category != "Other" else [],
+        "category":         category,  # backward compat
+        "tags":             found_tags[:5],
+        "technologies":     [],
+        "topics":           [category] if category != "Other" else [],
+        "use_case":         use_case,
+        "learning_value":   "intermediate",
     }
 
 _client: Optional[anthropic.AsyncAnthropic] = None
@@ -386,52 +558,84 @@ def _parse_json(text: str) -> dict:
 
 
 def _sanitize_analysis(result: dict) -> dict:
-    """Post-process AI or local output: strip tech-only tags from non-tech categories."""
-    cat = result.get("category", "Other")
-    if cat not in _TECH_CATEGORIES:
-        tags = result.get("tags") or []
-        result["tags"] = [t for t in tags if t not in _TECH_ONLY_TAGS]
-    # Cap at 5 tags
-    result["tags"] = (result.get("tags") or [])[:5]
+    """Post-process analysis: normalize tags, ensure multi-category fields, strip tech contamination."""
+    # Normalize and deduplicate tags
+    result["tags"] = normalize_tags(result.get("tags") or [])[:5]
+
+    # Ensure both category fields are populated consistently
+    primary = result.get("primary_category") or result.get("category") or "Other"
+    categories = result.get("categories") or []
+    if not categories:
+        categories = [primary]
+    if categories[0] != primary:
+        categories = [primary] + [c for c in categories if c != primary]
+    result["primary_category"] = primary
+    result["categories"]       = categories[:3]
+    result["category"]         = primary  # backward compat
+
+    # Strip tech-only tags when none of the assigned categories are technical
+    if not any(_is_tech_category(c) for c in categories):
+        result["tags"] = [t for t in result["tags"] if t not in _TECH_ONLY_TAGS]
+
     return result
+
+
+_TAXONOMY_PROMPT = """TAXONOMY — use these as specific category names (or generate a more specific subcategory):
+Technology: Programming, Web Development, Machine Learning, Deep Learning, NLP, Computer Vision, Data Science, Cybersecurity, DevOps & Cloud, Networking, Linux & System Administration, Embedded Systems, IoT, Robotics, Hardware & Electronics, Game Development, Computer Graphics, Distributed Systems, Algorithms & Data Structures, Databases, Reverse Engineering, Homelabs & Self-Hosting, Mobile Development, API Development, System Design
+Science: Physics, Chemistry, Biology, Neuroscience, Astronomy & Space, Genetics & Genomics, Environmental Science, Scientific Research
+Mathematics: Calculus & Analysis, Linear Algebra, Statistics & Probability, Discrete Mathematics, Applied Mathematics
+Engineering: Mechanical Engineering, Electrical Engineering, Aerospace Engineering, Chemical Engineering, Biomedical Engineering, Materials Science, Renewable Energy, Electronics & Circuits
+Medicine: Medicine & Healthcare, Mental Health & Psychology, Nutrition & Dietetics, Fitness & Exercise Science, Pharmacology, Public Health, Medical Research
+Business: Startups & Entrepreneurship, Marketing & Growth, Finance & Investing, Cryptocurrency & Web3, Economics, eCommerce & SaaS, Management & Leadership, Productivity & Systems, Personal Finance, Real Estate, Sales, Trading & Markets
+Social Sciences: Sociology & Anthropology, Political Science, Law & Legal Studies, International Relations
+Humanities: History, Philosophy & Ethics, Religion & Theology, Literature & Writing, Linguistics, Cultural Studies
+Arts: Design & UX/UI, Graphic Design, Photography, Music & Audio, Film & Video Production, Architecture, Creative Writing, Content Creation
+Education: Learning Resources & Courses, Research Papers & Journals, Tutorials & How-Tos, Study Materials, Certifications & Exams
+Trades: Automotive & Mechanics, Construction & Carpentry, Electrical Work & HVAC, Home Improvement & DIY
+Entertainment: Gaming, Movies & Film, TV & Streaming, Anime & Manga, Books & Comics, Sports & Esports, Podcasts, Board Games & TCGs
+Lifestyle: Cooking & Food, Travel & Adventure, Fitness & Wellness, Outdoor & Hiking, Pets & Animals, Home & Living, Personal Growth & Mindset, Coffee & Tea, Gardening & Plants, Fashion & Lifestyle, Watches & Luxury, Martial Arts
+General: News & Media, Tools & Apps, Ideas & Inspiration, Shopping & Product Research, Projects & Planning, Read Later"""
 
 
 async def analyze_site(url: str, title: str, description: str = "", raw_content: str = "") -> dict:
     content_preview = raw_content[:3000] if raw_content else ""
-    categories_str = ', '.join(CATEGORIES)
-    prompt = f"""You are an expert knowledge curator. Analyze this website and return structured metadata.
+    prompt = f"""You are NEXUS, an intelligent knowledge curator. Analyze this content and return rich structured metadata.
 
 URL: {url}
 TITLE: {title}
 DESCRIPTION: {description}
-PAGE CONTENT (excerpt): {content_preview}
+CONTENT (excerpt): {content_preview}
 
-Return ONLY a valid JSON object with these exact fields — no markdown, no explanation:
+{_TAXONOMY_PROMPT}
+
+Return ONLY valid JSON — no markdown, no explanation:
 {{
-  "summary": "2-3 sentence summary of what this content is actually about",
-  "category": "exactly one of: {categories_str}",
-  "tags": ["2-5 specific lowercase tags that DIRECTLY describe this content"],
-  "technologies": ["only if this is a technical page: programming languages, frameworks, or tools explicitly mentioned"],
-  "topics": ["domain topics this content actually covers"],
-  "use_case": "one sentence: specific situation when someone would visit this",
+  "primary_category": "the single most specific category for this content (e.g. 'Machine Learning', 'Neuroscience', 'Cooking & Food', 'Mechanical Engineering')",
+  "categories": ["primary_category", "up to 2 more only if content genuinely spans multiple domains"],
+  "summary": "2-3 sentences: what this is, who it's for, why it matters",
+  "tags": ["3-5 specific lowercase tags that directly describe THIS content — not the field in general"],
+  "technologies": ["only if explicitly technical: programming languages, frameworks, tools mentioned"],
+  "topics": ["specific concepts or subtopics this content covers"],
+  "use_case": "one sentence: when would someone return to this?",
   "learning_value": "beginner or intermediate or advanced",
-  "relationships": ["2-4 related concepts or fields this actually connects to"]
+  "content_type": "article or video or tool or paper or docs or course or repository or news or product or recipe or forum or other"
 }}
 
-CRITICAL RULES — violations make the output useless:
-- Tags must DIRECTLY match the content. Fewer accurate tags beat many wrong ones.
-- NEVER assign tech categories to non-technical content. Match the obvious theme:
-  - food/recipe → "Food & Cooking", tags: ["recipe","cooking"]
-  - game/Steam/PC gaming → "Gaming", tags: ["gaming","pc-games"]
-  - furniture/IKEA/home decor → "Home & Living", tags: ["furniture","interior-design"]
-  - outdoor/hiking/camping/REI → "Outdoor & Sports", tags: ["hiking","outdoor-gear"]
-  - dogs/cats/pets/adoption → "Pets", tags: ["pets"]
-  - hotel/flight/vacation → "Travel", tags: ["travel"]
-  - Amazon/eBay product/buying guide → "Shopping", tags: ["shopping"]
-  - news/journalism → "News & Media"
-  - health/medical/symptoms → "Health & Wellness"
-- If genuinely unclear, use "Other" with no tags rather than inventing ones.
-- technologies = [] unless this page is explicitly about code or technical tools."""
+CRITICAL RULES:
+- primary_category must be SPECIFIC (e.g. 'Machine Learning' not 'Technology', 'Neuroscience' not 'Science')
+- categories: 1 is ideal, 2-3 only if the content truly spans domains
+- tags must describe THIS page, not the general field — fewer accurate tags beat many generic ones
+- NEVER assign tech categories to non-technical content:
+  - food/recipe → "Cooking & Food", tags: ["recipe","cooking"]
+  - gaming/Steam → "Gaming", tags: ["gaming"]
+  - furniture/IKEA → "Home & Living", tags: ["furniture"]
+  - hiking/REI/camping → "Outdoor & Hiking", tags: ["hiking"]
+  - pets/adoption → "Pets & Animals", tags: ["pets"]
+  - travel/hotels → "Travel & Adventure", tags: ["travel"]
+  - news/journalism → "News & Media", tags: ["news"]
+  - health/medical → "Medicine & Healthcare" or "Fitness & Wellness"
+- technologies = [] unless this page is explicitly about code or technical tools
+- If genuinely unclear, use "Other" with no tags"""
 
     try:
         message = await _get_client().messages.create(

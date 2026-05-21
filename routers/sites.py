@@ -26,6 +26,7 @@ class SiteUpdate(BaseModel):
     notes:        Optional[str]  = None
     tags:         Optional[list] = None
     category:     Optional[str]  = None
+    categories:   Optional[list] = None
     pinned:       Optional[bool] = None
     technologies: Optional[list] = None
     topics:       Optional[list] = None
@@ -46,12 +47,12 @@ async def list_sites(
         .where(Site.user_id == current_user.id)
         .order_by(Site.pinned.desc(), Site.created_at.desc())
     )
-    if category:
-        stmt = stmt.where(Site.category == category)
     if pinned is not None:
         stmt = stmt.where(Site.pinned == pinned)
     result = await db.execute(stmt)
     sites = result.scalars().all()
+    if category:
+        sites = [s for s in sites if s.category == category or category in (s.categories or [])]
     if tag:
         tag_lower = tag.lower()
         sites = [s for s in sites if tag_lower in [t.lower() for t in (s.tags or [])]]
@@ -152,7 +153,7 @@ async def update_site(
     for field, value in updated.items():
         setattr(site, field, value)
     await db.flush()
-    re_embed = any(f in updated for f in ("title", "tags", "topics", "technologies", "category"))
+    re_embed = any(f in updated for f in ("title", "tags", "topics", "technologies", "category", "categories"))
     if re_embed:
         try:
             embedding_service.upsert(site.id, site.to_dict(), user_id=current_user.id)

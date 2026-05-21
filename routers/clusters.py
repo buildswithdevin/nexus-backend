@@ -2,7 +2,7 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,8 @@ class ClusterCreate(BaseModel):
     description: Optional[str]  = None
     color:       Optional[str]  = "#8b5cf6"
     site_ids:    list[str]      = []
+    parent_id:   Optional[str]  = None
+    icon:        Optional[str]  = None
 
 
 class ClusterUpdate(BaseModel):
@@ -31,6 +33,8 @@ class ClusterUpdate(BaseModel):
     color:       Optional[str]  = None
     site_ids:    Optional[list] = None
     insight:     Optional[str]  = None
+    parent_id:   Optional[str]  = None
+    icon:        Optional[str]  = None
 
 
 def _enrich_cluster(cluster: Cluster, sites_by_id: dict) -> dict:
@@ -93,6 +97,105 @@ async def list_clusters_enriched(
     return {"total": len(enriched), "clusters": enriched}
 
 
+@router.get("/tree")
+async def get_cluster_tree(
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result   = await db.execute(
+        select(Cluster)
+        .where(Cluster.user_id == current_user.id)
+        .order_by(Cluster.created_at.desc())
+    )
+    clusters = result.scalars().all()
+    if not clusters:
+        return {"total": 0, "tree": []}
+    sites_by_id   = await _load_sites_for_clusters(list(clusters), db)
+    enriched_by_id = {c.id: _enrich_cluster(c, sites_by_id) for c in clusters}
+
+    roots: list[dict] = []
+    for c in clusters:
+        node = enriched_by_id[c.id]
+        if c.parent_id and c.parent_id in enriched_by_id:
+            parent = enriched_by_id[c.parent_id]
+            parent.setdefault("children", []).append(node)
+        else:
+            roots.append(node)
+    return {"total": len(clusters), "tree": roots}
+
+
+@router.get("/suggest")
+async def suggest_collections(
+    site_id: str       = Query(...),
+    db: AsyncSession   = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    site = await db.get(Site, site_id)
+    if not site or site.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    result   = await db.execute(
+        select(Cluster).where(Cluster.user_id == current_user.id)
+    )
+    clusters = result.scalars().all()
+    if not clusters:
+        return {"site_id": site_id, "suggestions": []}
+
+    all_site_ids = list({sid for c in clusters for sid in (c.site_ids or [])})
+    sites_by_id: dict = {}
+    if all_site_ids:
+        sr = await db.execute(select(Site).where(Site.id.in_(all_site_ids)))
+        sites_by_id = {s.id: s for s in sr.scalars().all()}
+
+    site_cats = {site.category} if site.category else set()
+    for c in (site.categories or []):
+        site_cats.add(c)
+    site_tags = set(site.tags or [])
+
+    suggestions = []
+    for cluster in clusters:
+        if site_id in (cluster.site_ids or []):
+            suggestions.append({
+                "cluster_id":    cluster.id,
+                "cluster_name":  cluster.name,
+                "cluster_color": cluster.color,
+                "confidence":    1.0,
+                "reason":        "Already in this collection",
+                "current":       True,
+            })
+            continue
+
+        c_cats: set[str] = set()
+        c_tags: set[str] = set()
+        for sid in (cluster.site_ids or []):
+            s = sites_by_id.get(sid)
+            if not s:
+                continue
+            if s.category:
+                c_cats.add(s.category)
+            for cat in (s.categories or []):
+                c_cats.add(cat)
+            for t in (s.tags or []):
+                c_tags.add(t)
+
+        cat_overlap = len(site_cats & c_cats)
+        tag_overlap = len(site_tags & c_tags)
+
+        if cat_overlap > 0 or tag_overlap >= 2:
+            confidence = min(1.0, cat_overlap * 0.4 + tag_overlap * 0.15)
+            suggestions.append({
+                "cluster_id":    cluster.id,
+                "cluster_name":  cluster.name,
+                "cluster_color": cluster.color,
+                "confidence":    round(confidence, 2),
+                "reason":        f"{cat_overlap} matching {'category' if cat_overlap == 1 else 'categories'}, {tag_overlap} matching tags",
+                "current":       False,
+            })
+
+    suggestions.sort(key=lambda x: x["confidence"], reverse=True)
+    return {"site_id": site_id, "suggestions": suggestions[:5]}
+
+
 @router.post("")
 async def create_cluster(
     body: ClusterCreate,
@@ -106,6 +209,8 @@ async def create_cluster(
         description = body.description or "",
         color       = body.color or "#8b5cf6",
         site_ids    = body.site_ids,
+        parent_id   = body.parent_id,
+        icon        = body.icon,
     )
     db.add(cluster)
     await db.flush()

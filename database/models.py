@@ -48,6 +48,7 @@ class Site(Base):
     favicon_url:    Mapped[Optional[str]]  = mapped_column(String(2048))
     raw_content:    Mapped[Optional[str]]  = mapped_column(Text)
     category:       Mapped[Optional[str]]  = mapped_column(String(128))
+    categories:     Mapped[Optional[list]] = mapped_column(JSON, default=list)
     tags:           Mapped[Optional[list]] = mapped_column(JSON, default=list)
     technologies:   Mapped[Optional[list]] = mapped_column(JSON, default=list)
     topics:         Mapped[Optional[list]] = mapped_column(JSON, default=list)
@@ -77,7 +78,9 @@ class Site(Base):
             "description":    self.description,
             "summary":        self.summary,
             "favicon_url":    self.favicon_url,
-            "category":       self.category,
+            "category":          self.category,
+            "categories":        self.categories or ([self.category] if self.category else []),
+            "primary_category":  (self.categories or [self.category])[0] if (self.categories or self.category) else "Other",
             "tags":           self.tags or [],
             "technologies":   self.technologies or [],
             "topics":         self.topics or [],
@@ -160,6 +163,8 @@ class Cluster(Base):
     site_ids:      Mapped[Optional[list]] = mapped_column(JSON, default=list)
     learning_path: Mapped[Optional[list]] = mapped_column(JSON, default=list)
     insight:       Mapped[Optional[str]]  = mapped_column(Text)
+    parent_id:     Mapped[Optional[str]]  = mapped_column(String, nullable=True)
+    icon:          Mapped[Optional[str]]  = mapped_column(String(128), nullable=True)
     created_at:    Mapped[datetime]       = mapped_column(DateTime(timezone=True), default=utcnow)
 
     def to_dict(self) -> dict:
@@ -171,5 +176,7 @@ class Cluster(Base):
             "site_ids":      self.site_ids or [],
             "learning_path": self.learning_path or [],
             "insight":       self.insight,
+            "parent_id":     self.parent_id,
+            "icon":          self.icon,
             "created_at":    self.created_at.isoformat() if self.created_at else None,
         }

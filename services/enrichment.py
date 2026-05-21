@@ -53,13 +53,15 @@ async def run_enrichment(site_id: str, raw_content: str = "") -> None:
             if is_restricted:
                 log_blocked(f"{title} | {url}", content_safety.category or "unknown", "enrichment")
                 ai: dict = {
-                    "summary":        "This content has been flagged and will not be analysed.",
-                    "category":       "Other",
-                    "tags":           [],
-                    "technologies":   [],
-                    "topics":         [],
-                    "use_case":       "",
-                    "learning_value": "intermediate",
+                    "summary":          "This content has been flagged and will not be analysed.",
+                    "primary_category": "Other",
+                    "categories":       ["Other"],
+                    "category":         "Other",
+                    "tags":             [],
+                    "technologies":     [],
+                    "topics":           [],
+                    "use_case":         "",
+                    "learning_value":   "intermediate",
                 }
                 site.restricted        = True
                 site.restricted_reason = content_safety.category
@@ -73,7 +75,9 @@ async def run_enrichment(site_id: str, raw_content: str = "") -> None:
 
             site.summary       = ai.get("summary", "")
             site.description   = site.description or ai.get("summary", "")
-            site.category      = ai.get("category", "Other")
+            primary            = ai.get("primary_category") or ai.get("category", "Other")
+            site.category      = primary
+            site.categories    = ai.get("categories") or [primary]
             site.tags          = [t.lower() for t in ai.get("tags", [])]
             site.technologies  = ai.get("technologies", [])
             site.topics        = ai.get("topics", [])

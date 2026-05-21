@@ -51,6 +51,11 @@ _MIGRATIONS = [
     "ALTER TABLE sites ADD COLUMN duplicate_of_id VARCHAR",
     "ALTER TABLE sites ADD COLUMN importance_score REAL",
     "ALTER TABLE sites ADD COLUMN content_type VARCHAR(64)",
+    # Multi-category support
+    "ALTER TABLE sites ADD COLUMN categories JSON",
+    # Nested collections
+    "ALTER TABLE clusters ADD COLUMN parent_id VARCHAR",
+    "ALTER TABLE clusters ADD COLUMN icon VARCHAR(128)",
 ]
 
 
