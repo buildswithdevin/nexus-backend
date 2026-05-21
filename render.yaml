@@ -1,0 +1,52 @@
+# Render Infrastructure as Code
+# Docs: https://render.com/docs/infrastructure-as-code
+#
+# IMPORTANT: Persistent disk requires a paid plan (Starter, $7/mo minimum).
+# Free-tier instances do not support disks — upgrade before deploying to production.
+
+services:
+  - type: web
+    name: nexus-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt && (playwright install chromium --with-deps || true)
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+
+    # Persistent disk — survives deploys and restarts.
+    # Both the SQLite DB and ChromaDB live here.
+    disk:
+      name: nexus-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      # ── Database (persistent disk) ────────────────────────────────────────
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:////data/nexus.db
+      - key: CHROMA_PATH
+        value: /data/chroma
+
+      # ── Auth ──────────────────────────────────────────────────────────────
+      # generateValue: Render generates a cryptographically secure random
+      # value on first deploy and keeps it STABLE across all future deploys.
+      # This prevents the "every redeploy logs everyone out" bug.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # ── AI (set manually in Render dashboard — never commit the real key) ─
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # ── OAuth callbacks (set to your actual Render service URL) ───────────
+      - key: BACKEND_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+      # ── Static config ─────────────────────────────────────────────────────
+      - key: EMBEDDING_MODEL
+        value: sentence-transformers/all-MiniLM-L6-v2
+      - key: SCRAPER_TIMEOUT
+        value: "15"
+      - key: MAX_CONTENT_LENGTH
+        value: "8000"

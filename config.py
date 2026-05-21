@@ -1,7 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import List
 import os
-import secrets
 
 
 class Settings(BaseSettings):
@@ -15,8 +14,8 @@ class Settings(BaseSettings):
     scraper_timeout: int = 15
     max_content_length: int = 8000
 
-    # Auth
-    jwt_secret: str = secrets.token_hex(32)   # override via env var in production
+    # Auth — JWT_SECRET must be set via env var; app refuses to start without it
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_days: int = 30
 
