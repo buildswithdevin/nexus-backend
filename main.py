@@ -26,10 +26,12 @@ async def lifespan(app: FastAPI):
     logger.info("━━━ NEXUS BACKEND STARTING ━━━")
 
     if not settings.jwt_secret:
-        raise RuntimeError(
-            "JWT_SECRET is not set. "
-            "Local: add JWT_SECRET to your .env file. "
-            "Render: set it in Environment Variables (or use render.yaml generateValue). "
+        import secrets as _secrets
+        settings.jwt_secret = _secrets.token_hex(32)
+        logger.critical(
+            "⚠️  JWT_SECRET is not set — generated an ephemeral random secret for this session. "
+            "ALL SESSIONS WILL BE INVALIDATED ON EVERY RESTART/REDEPLOY. "
+            "Fix: add JWT_SECRET to Render Environment Variables, then redeploy. "
             "Generate a value with: python -c \"import secrets; print(secrets.token_hex(32))\""
         )
 
