@@ -12,11 +12,13 @@ CATEGORIES = [
     # Technical
     "AI & ML", "Cybersecurity", "Robotics", "Embedded Systems",
     "Development", "Design", "Data Science", "Cloud & DevOps", "Hardware",
-    # Knowledge / productivity
+    # Knowledge
     "Research", "Productivity", "Education",
-    # General content
-    "News & Media", "Food & Cooking", "Health & Wellness",
-    "Science", "Business & Finance", "Entertainment", "Other",
+    # Lifestyle / consumer
+    "Food & Cooking", "Health & Wellness", "Gaming", "Home & Living",
+    "Shopping", "Outdoor & Sports", "Pets", "Travel",
+    # Media / general
+    "News & Media", "Science", "Business & Finance", "Entertainment", "Other",
 ]
 
 _TECH_CATEGORIES = frozenset({
@@ -38,30 +40,67 @@ _TECH_ONLY_TAGS = frozenset({
 
 # Non-tech domain patterns checked FIRST to prevent false tech assignments
 _DOMAIN_CATEGORY: list[tuple[set[str], str]] = [
+    # Gaming — unambiguous, must come before general entertainment
+    ({"steampowered.com", "epicgames.com", "gog.com", "itch.io",
+      "xbox.com", "playstation.com", "nintendo.com",
+      "gamespot.com", "ign.com", "polygon.com", "kotaku.com",
+      "pcgamer.com", "rockpapershotgun.com", "eurogamer.net",
+      "newgrounds.com", "gamefaqs.gamespot.com"}, "Gaming"),
     # Food & Cooking
     ({"allrecipes", "foodnetwork", "epicurious", "seriouseats", "bonappetit",
       "tasty.co", "delish.", "yummly", "simplyrecipes", "thekitchn", "skinnytaste",
-      "food.", "recipe", "cooking.", "cuisine", "baking", "bbq.", "eater.com"}, "Food & Cooking"),
+      "food.", "recipe", "cooking.", "cuisine", "baking", "bbq.", "eater.com",
+      "sallybakingaddiction", "budgetbytes", "halfbakedharvest",
+      "pinchofyum", "damndelicious", "cafedelites"}, "Food & Cooking"),
+    # Home & Living
+    ({"ikea.com", "wayfair.com", "westelm.com", "crateandbarrel.com",
+      "cb2.com", "potterybarn.com", "homedepot.com", "lowes.com",
+      "overstock.com", "apartmenttherapy.com", "architecturaldigest.com",
+      "houzz.com", "article.com", "burrow.com", "zgallerie.com",
+      "roomandboard.com", "rh.com", "restoration hardware"}, "Home & Living"),
+    # Outdoor & Sports
+    ({"rei.com", "backcountry.com", "alltrails.com", "strava.com",
+      "patagonia.com", "thenorthface.com", "moosejaw.com", "trailforks.com",
+      "outsideonline.com", "backpacker.com", "hikingproject.com",
+      "summitpost.org", "peakbagger.com", "komoot.com"}, "Outdoor & Sports"),
+    # Pets
+    ({"petfinder.com", "chewy.com", "petsmart.com", "petco.com",
+      "akc.org", "catster.com", "dogster.com", "hillspet.com",
+      "rover.com", "petmd.com", "vetstreet.com", "iheartdogs.com"}, "Pets"),
+    # Travel
+    ({"airbnb.com", "booking.com", "expedia.com", "tripadvisor.com",
+      "kayak.com", "skyscanner.com", "lonelyplanet.com", "hotels.com",
+      "vrbo.com", "travelocity.com", "momondo.com", "fodors.com",
+      "frommers.com", "nomadicmatt.com", "travelandleisure.com"}, "Travel"),
     # News & Media
     ({"cnn.com", "bbc.", "reuters.", "nytimes", "washingtonpost", "theguardian",
       "apnews", "npr.org", "bloomberg.", "foxnews", "nbcnews", "abc7", "cbsnews",
-      "usatoday", "theatlantic", "politico", "axios"}, "News & Media"),
+      "usatoday", "theatlantic", "politico", "axios", "vox.com",
+      "slate.com", "huffpost", "thedailybeast"}, "News & Media"),
     # Health & Wellness
     ({"webmd", "healthline", "mayoclinic", "nih.gov", "pubmed", "medicalnewstoday",
-      "everydayhealth", "health.", "wellness", "nutrition.", "drugs.com"}, "Health & Wellness"),
-    # Entertainment
+      "everydayhealth", "health.", "wellness", "nutrition.", "drugs.com",
+      "verywellhealth", "medlineplus", "clevelandclinic"}, "Health & Wellness"),
+    # Entertainment (music, film, streaming — not gaming)
     ({"imdb.com", "rottentomatoes", "metacritic", "netflix", "hulu", "disney",
-      "spotify.com", "soundcloud", "twitch.tv", "youtube.com", "vimeo"}, "Entertainment"),
+      "spotify.com", "soundcloud", "twitch.tv", "youtube.com", "vimeo",
+      "letterboxd.com", "goodreads.com", "audible.com"}, "Entertainment"),
     # Business & Finance
     ({"forbes", "investopedia", "marketwatch", "cnbc.com", "businessinsider",
-      "hbr.org", "wsj.com", "ft.com", "economist"}, "Business & Finance"),
-    # Sports
+      "hbr.org", "wsj.com", "ft.com", "economist",
+      "morningstar.com", "seekingalpha.com", "kiplinger.com"}, "Business & Finance"),
+    # Sports (→ Entertainment as general catch-all)
     ({"espn.com", "bleacherreport", "nba.com", "nfl.com", "mlb.com",
       "goal.com", "skysports", "theathletic"}, "Entertainment"),
     # Science (non-CS)
     ({"nature.com", "science.org", "sciencedaily", "newscientist", "scientificamerican",
       "nasa.gov", "space.com", "phys.org"}, "Science"),
-    # Tech domains (after non-tech to avoid misclassifying food.github.io etc.)
+    # Shopping — general retail (placed before tech to catch ebay/etsy/walmart)
+    # Note: amazon.com excluded here — aws.amazon.com must match Cloud & DevOps instead
+    ({"ebay.com", "etsy.com", "walmart.com", "target.com", "bestbuy.com",
+      "newegg.com", "wirecutter.com", "rtings.com",
+      "camelcamelcamel.com", "slickdeals.net", "dealnews.com"}, "Shopping"),
+    # Tech domains (after all non-tech domains)
     ({"github.com", "gitlab.com", "bitbucket.org", "codeberg.org"}, "Development"),
     ({"stackoverflow.com", "stackexchange.com"}, "Development"),
     ({"devdocs.io", "developer.mozilla", "developer.apple", "developer.android"}, "Development"),
@@ -104,10 +143,40 @@ _KEYWORD_TAGS: list[tuple[list[str], str]] = [
     (["research paper", "academic study", "journal article", "arxiv", "peer review"], "research"),
     (["game development", "unity engine", "unreal engine", "godot engine", "pygame"], "game-dev"),
     (["ios app", "android app", "swift", "kotlin", "react native", "flutter"], "mobile"),
-    # Non-tech tags
+    # Non-tech tags (original)
     (["recipe", "ingredients", "cooking", "baking", "cuisine"], "recipe"),
     (["health tips", "symptoms", "treatment", "wellness", "nutrition"], "health"),
     (["news", "breaking news", "journalist", "headline", "editorial"], "news"),
+    # Gaming
+    (["video game", "pc gaming", "game review", "gameplay", "multiplayer", "esports",
+      "open world", "indie game", "game trailer", "early access", "battle royale",
+      "mmorpg", "rpg game", "fps game", "gaming pc", "patch notes"], "gaming"),
+    (["steam store", "epic games store", "gog games", "game pass",
+      "nintendo eshop", "psn store", "xbox store"], "game-store"),
+    # Home & Living
+    (["furniture", "sofa", "couch", "bookshelf", "dining table", "wardrobe",
+      "dresser", "office chair", "standing desk", "home office setup"], "furniture"),
+    (["home decor", "interior design", "living room design", "bedroom design",
+      "kitchen renovation", "home improvement", "room makeover"], "interior-design"),
+    # Shopping
+    (["add to cart", "buy now", "free shipping", "product review", "buyer's guide",
+      "best price", "discount code", "in stock", "compare prices", "price drop",
+      "top picks", "best overall"], "shopping"),
+    # Outdoor & Sports
+    (["hiking trail", "camping gear", "outdoor adventure", "backpacking",
+      "rock climbing", "kayaking", "mountain biking", "trail running",
+      "skiing", "snowboarding", "outdoor gear", "trekking"], "hiking"),
+    (["national park", "campsite", "wilderness", "summit", "sleeping bag",
+      "tent review", "camping trip"], "camping"),
+    # Pets
+    (["dog breed", "cat breed", "puppy training", "kitten care", "pet adoption",
+      "pet health", "dog food", "cat food", "pet grooming", "veterinary",
+      "dog walking", "cat owner", "pet store"], "pets"),
+    # Travel
+    (["travel destination", "hotel review", "flight deal", "vacation planning",
+      "travel itinerary", "sightseeing", "tourist attraction", "travel guide",
+      "travel tips", "travel blog", "best places to visit"], "travel"),
+    (["hostel", "hotel booking", "resort review", "cruise ship"], "accommodation"),
 ]
 
 _KEYWORD_CATEGORY: list[tuple[list[str], str]] = [
@@ -122,6 +191,30 @@ _KEYWORD_CATEGORY: list[tuple[list[str], str]] = [
       "quantum", "genomics", "neuroscience", "telescope", "nasa"], "Science"),
     (["quarterly earnings", "stock market", "investor", "startup funding", "venture capital",
       "business strategy", "revenue", "ceo", "acquisition"], "Business & Finance"),
+    # Lifestyle / consumer categories
+    (["video game", "pc gaming", "console game", "game review", "gameplay",
+      "multiplayer", "esports", "indie game", "open world", "mmorpg",
+      "game trailer", "steam game", "gaming pc", "game download",
+      "game pass", "game release", "dlc"], "Gaming"),
+    (["furniture", "sofa", "couch", "bookshelf", "home office", "interior design",
+      "home decor", "living room", "bedroom", "dining table", "home improvement",
+      "wardrobe", "office chair", "standing desk", "room design",
+      "home setup", "desk setup"], "Home & Living"),
+    (["add to cart", "buy now", "free shipping", "product review", "buyer's guide",
+      "best price", "discount", "in stock", "compare prices",
+      "customer reviews", "return policy", "top picks", "best overall",
+      "where to buy", "price comparison"], "Shopping"),
+    (["hiking trail", "camping", "outdoor adventure", "backpacking", "rock climbing",
+      "kayaking", "mountain biking", "trail running", "skiing", "snowboarding",
+      "outdoor gear", "national park", "trekking", "summit", "gear review"], "Outdoor & Sports"),
+    (["dog breed", "cat breed", "puppy training", "kitten care", "pet adoption",
+      "pet care", "pet health", "dog training", "cat care", "dog food",
+      "cat food", "veterinary", "pet grooming", "pet store", "fish tank",
+      "aquarium", "bird care"], "Pets"),
+    (["travel destination", "hotel review", "flight deal", "vacation planning",
+      "travel itinerary", "sightseeing", "tourist attraction", "travel guide",
+      "travel tips", "trip planning", "travel blog", "best places to visit",
+      "hostel", "resort", "cruise"], "Travel"),
     # Tech categories
     (["machine learning", "deep learning", "large language model", "gpt-4", "transformer model",
       "neural network", "ai agent", "generative ai", "openai", "anthropic", "hugging face"], "AI & ML"),
@@ -209,6 +302,13 @@ def _local_analyze_site(url: str, title: str, description: str = "", raw_content
             "Education": "education",
             "Science": "science",
             "Business & Finance": "business",
+            "Gaming": "gaming",
+            "Home & Living": "furniture",
+            "Shopping": "shopping",
+            "Outdoor & Sports": "hiking",
+            "Pets": "pets",
+            "Travel": "travel",
+            "Entertainment": "entertainment",
         }
         tag = cat_tag_map.get(category)
         if tag:
@@ -244,6 +344,12 @@ def _local_analyze_site(url: str, title: str, description: str = "", raw_content
         "Business & Finance": "When researching business strategy, markets, or financial topics.",
         "Education": "When learning or teaching a subject in depth.",
         "Entertainment": "For leisure, entertainment, or cultural reference.",
+        "Gaming": "When looking for games to play, game reviews, or gaming communities.",
+        "Home & Living": "When furnishing, decorating, or setting up a living or work space.",
+        "Shopping": "When researching a product, comparing options, or looking for the best deal.",
+        "Outdoor & Sports": "When planning outdoor activities, gear purchases, or fitness routes.",
+        "Pets": "When caring for, adopting, or learning about pets.",
+        "Travel": "When planning a trip, finding accommodations, or exploring destinations.",
     }
     use_case = use_case_map.get(category, "A reference saved to your NEXUS library.")
 
@@ -314,9 +420,16 @@ Return ONLY a valid JSON object with these exact fields — no markdown, no expl
 
 CRITICAL RULES — violations make the output useless:
 - Tags must DIRECTLY match the content. Fewer accurate tags beat many wrong ones.
-- NEVER assign tech categories (AI & ML, Development, Robotics, etc.) to food, news, health, or entertainment content.
-- If this is a food/recipe site: category = "Food & Cooking", tags like ["recipe", "cooking"] — NOT "api", "typescript", "llm".
-- If this is a news site: category = "News & Media".
+- NEVER assign tech categories to non-technical content. Match the obvious theme:
+  - food/recipe → "Food & Cooking", tags: ["recipe","cooking"]
+  - game/Steam/PC gaming → "Gaming", tags: ["gaming","pc-games"]
+  - furniture/IKEA/home decor → "Home & Living", tags: ["furniture","interior-design"]
+  - outdoor/hiking/camping/REI → "Outdoor & Sports", tags: ["hiking","outdoor-gear"]
+  - dogs/cats/pets/adoption → "Pets", tags: ["pets"]
+  - hotel/flight/vacation → "Travel", tags: ["travel"]
+  - Amazon/eBay product/buying guide → "Shopping", tags: ["shopping"]
+  - news/journalism → "News & Media"
+  - health/medical/symptoms → "Health & Wellness"
 - If genuinely unclear, use "Other" with no tags rather than inventing ones.
 - technologies = [] unless this page is explicitly about code or technical tools."""
 
@@ -723,7 +836,10 @@ STRICT RULES:
 5. Each source belongs to at most one collection.
 6. Merge very similar topics (e.g. "OpenAI" + "Anthropic" → "AI APIs")
 
-GOOD examples: "React Frontend", "AI Agents & LLMs", "Resume & Job Tools", "Arduino & ESP32", "Academic Research", "Productivity Apps"
+GOOD examples:
+- Tech: "React Frontend", "AI Agents & LLMs", "Arduino & ESP32", "Academic Research", "Resume & Job Tools"
+- Non-tech: "Cooking & Recipes", "Home Office Setup", "PC Gaming", "Hiking & Outdoor Gear", "Pet Care", "Travel Planning", "Home Furniture"
+The library may be entirely non-technical — that is completely valid. Group by THEME, not by tech-bias.
 
 Return ONLY valid JSON:
 {{
