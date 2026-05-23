@@ -1,13 +1,15 @@
 """
 OAuth 2.0 login for Google, Microsoft, and GitHub.
 
-Flow:
-  1. Browser visits GET /api/auth/{provider}
-  2. Backend generates state, sets cookie, redirects to provider
-  3. Provider redirects to GET /api/auth/{provider}/callback?code=...&state=...
-  4. Backend exchanges code → access token → user info
-  5. Backend finds or creates User, issues JWT
-  6. Backend redirects to {FRONTEND_URL}/auth/callback?token=<jwt>
+Two Google flows are supported:
+  Redirect flow (GET /api/auth/google):
+    Requires GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET.
+    Classic server-side Authorization Code exchange.
+
+  GIS token flow (POST /api/auth/google/token):
+    Requires GOOGLE_CLIENT_ID only (no client secret).
+    Frontend obtains an id_token via Google Identity Services, POSTs it here,
+    and receives a Nexus JWT directly.
 """
 import logging
 import secrets
@@ -16,8 +18,11 @@ import re
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from jwt import PyJWKClient
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -177,6 +182,51 @@ async def google_callback(
     user  = await _find_or_create("google", gid, email, name, db)
     token = create_access_token(user)
     return _frontend_redirect(token)
+
+
+# ── Google Identity Services (GIS) token flow — no client secret required ─────
+#
+# The frontend uses Google's "Sign In With Google" button (GIS library).
+# After user consent GIS returns a signed id_token (called `credential`).
+# POST that credential here; the backend verifies it against Google's public
+# JWKS — GOOGLE_CLIENT_SECRET is NOT needed for this path.
+
+_GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+_google_jwks = PyJWKClient(_GOOGLE_JWKS_URL, lifespan=3600)
+
+
+class _GoogleCredentialBody(BaseModel):
+    credential: str
+
+
+@router.post("/google/token")
+async def google_gis_token(
+    body: _GoogleCredentialBody,
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.google_client_id:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+    try:
+        signing_key = _google_jwks.get_signing_key_from_jwt(body.credential)
+        payload = jwt.decode(
+            body.credential,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=settings.google_client_id,
+            issuer=["accounts.google.com", "https://accounts.google.com"],
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Google credential expired")
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid Google credential: {exc}")
+
+    email = payload.get("email", "")
+    name  = payload.get("name") or payload.get("given_name") or email.split("@")[0]
+    gid   = payload.get("sub", "")
+
+    user  = await _find_or_create("google", gid, email, name, db)
+    token = create_access_token(user)
+    return {"token": token}
 
 
 # ── Microsoft ─────────────────────────────────────────────────────────────────

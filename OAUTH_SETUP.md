@@ -12,21 +12,65 @@ FRONTEND_URL=https://nexus-frontend-five-swart.vercel.app
 
 ## Google OAuth
 
+Two flows are available. Choose based on whether you have the client secret.
+
+### Flow A — Redirect / Authorization Code (requires client secret)
+
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a project (or select existing)
-3. **APIs & Services → Credentials → Create Credentials → OAuth client ID**
-4. Application type: **Web application**
-5. Authorized redirect URIs — add:
+2. **APIs & Services → Credentials → Create Credentials → OAuth client ID**
+3. Application type: **Web application**
+4. Authorized redirect URIs — add:
    ```
    https://nexus-backend-bx18.onrender.com/api/auth/google/callback
    http://localhost:8000/api/auth/google/callback
    ```
-6. Copy **Client ID** and **Client Secret**
+5. After saving, click the **client name** in the credentials list to open the detail page
+6. The **Client secret** is shown there with a copy icon — or click **"Download JSON"**
+   to get a file named `client_secret_....json` containing both values
 
 **Render env vars:**
 ```
 GOOGLE_CLIENT_ID=<your-client-id>
 GOOGLE_CLIENT_SECRET=<your-client-secret>
+```
+
+### Flow B — Google Identity Services / GIS (client ID only, no secret needed)
+
+The frontend renders Google's Sign In With Google button (GIS JavaScript library).
+After the user consents, GIS returns a signed `credential` (JWT id_token) to the
+frontend. The frontend POSTs this to the backend, which verifies the signature
+against Google's public keys — no client secret is ever needed.
+
+**Backend endpoint:** `POST /api/auth/google/token`
+**Request body:** `{ "credential": "<id_token from GIS>" }`
+**Response:** `{ "token": "<nexus-jwt>" }`
+
+**Render env vars (Flow B only):**
+```
+GOOGLE_CLIENT_ID=<your-client-id>
+```
+
+**Frontend integration (add to your login page HTML):**
+```html
+<script src="https://accounts.google.com/gsi/client" async></script>
+<div id="g_id_onload"
+     data-client_id="YOUR_GOOGLE_CLIENT_ID"
+     data-callback="handleGoogleCredential">
+</div>
+<div class="g_id_signin" data-type="standard"></div>
+
+<script>
+async function handleGoogleCredential(response) {
+  const res = await fetch('https://nexus-backend-bx18.onrender.com/api/auth/google/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential: response.credential }),
+  });
+  const { token } = await res.json();
+  localStorage.setItem('nexus_token', token);
+  window.location.href = '/app';
+}
+</script>
 ```
 
 ---
